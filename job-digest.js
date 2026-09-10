@@ -16,25 +16,38 @@ const SEARCHES = [
   { location: 'Pune, Maharashtra, India', keywords: 'cybersecurity' },
 ];
 
-// Title must contain at least one of these to be kept.
+// Title must match at least one of these. Entries that were pure substrings
+// of another entry (e.g. 'cloud security', 'aws security', 'application
+// security' - all already caught by 'security' alone) have been removed;
+// they added maintenance cost with zero extra coverage.
 const SECURITY_KEYWORDS = [
   'security', 'cyber', 'soc', 'iam', 'siem', 'dlp', 'pentest', 'penetration',
   'vulnerability', 'malware', 'infosec', 'sailpoint', 'cyberark', 'saviynt',
   'devsecops', 'defender', 'cnapp', 'cspm', 'beyondtrust', 'grc',
-  'red team', 'blue team', 'incident response',
+  'red team', 'blue team', 'purple team', 'incident response', 'exploit',
+  'offensive', 'ethical hacker', 'bug bounty', 'reverse engineer',
+  'binary analysis', 'adversary emulation', 'cwpp', 'dspm', 'sase', 'ztna',
+  'wiz', 'prisma cloud', 'lacework', 'appsec', 'prodsec', 'sast', 'dast',
+  'iast', 'snyk', 'veracode', 'checkmarx',
 ];
 
+// Compiled once at module load instead of re-scanning the array with
+// .some()/.includes() on every single title.
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+const SECURITY_REGEX = new RegExp(SECURITY_KEYWORDS.map(escapeRegex).join('|'), 'i');
+
 // Title must NOT contain any of these. This is your literal rule:
-// exclude "senior". The extra terms below are commented out by default —
+// exclude "senior". The extra terms below are commented out by default -
 // uncomment them once you've confirmed the narrower list isn't missing
 // jobs you actually want (they catch Staff/Lead/Principal/Director/Manager/
 // Architect titles, which are equally not 0-3yr roles but won't say "senior").
 const SENIORITY_EXCLUDE = [
-  'senior', 'sr.', 'sr ',
-  // 'staff', 'lead', 'principal', 'director', 'head of', 'manager', 'architect', 'vp ', 'chief',
+  'senior', 'sr.', 'sr ','staff', 'lead', 'principal', 'director', 'head of', 'manager', 'architect', 'vp ', 'chief', 'II ', 'III', 'compliance', 'governance', 'risk', 'audit', 'ciso', 'Archt'
 ];
 
-// EXPERIMENTAL — off by default. If a job's description text contains an
+// EXPERIMENTAL - off by default. If a job's description text contains an
 // explicit years-of-experience requirement above this number, exclude it.
 // Turn on only after spot-checking it doesn't wrongly cut jobs where the
 // regex misfires (ranges, "X+ years in the industry" unrelated phrasing, etc).
@@ -73,7 +86,7 @@ async function runApifySearch({ location, keywords }) {
 
 function passesTitleFilter(title) {
   const t = (title || '').toLowerCase();
-  const hasSecurityTerm = SECURITY_KEYWORDS.some((k) => t.includes(k));
+  const hasSecurityTerm = SECURITY_REGEX.test(t);
   const hasExcludedTerm = SENIORITY_EXCLUDE.some((k) => t.includes(k));
   return hasSecurityTerm && !hasExcludedTerm;
 }
@@ -103,7 +116,7 @@ function buildEmailHtml(resultsByLocation) {
       const items = jobs
         .map(
           (j) =>
-            `<li><b>${escapeHtml(j.title)}</b> — ${escapeHtml(j.companyName || 'Unknown')} — <a href="${j.link}">Link</a></li>`
+            `<li><b>${escapeHtml(j.title)}</b> - ${escapeHtml(j.companyName || 'Unknown')} - <a href="${j.link}">Link</a></li>`
         )
         .join('\n');
       return `<h3>${escapeHtml(location)} (${jobs.length})</h3><ol>${items}</ol>`;
@@ -113,12 +126,12 @@ function buildEmailHtml(resultsByLocation) {
   const total = resultsByLocation.reduce((sum, r) => sum + r.jobs.length, 0);
 
   return `
-    <h2>Cybersecurity Roles — Last 24 Hours (0-3 yrs, senior excluded)</h2>
+    <h2>Cybersecurity Roles - Last 24 Hours (0-3 yrs, senior excluded)</h2>
     <p>Total: ${total}</p>
     ${sections}
     <p style="color:#666;font-size:12px;">
-      Filtered by title keyword match + "senior" exclusion. This is a heuristic,
-      not a guaranteed experience-level filter — LinkedIn no longer exposes a
+      Filtered by title keyword match. This is a heuristic,
+      not a guaranteed experience-level filter - LinkedIn no longer exposes a
       structured experience filter via public search.
     </p>
   `;
@@ -160,7 +173,7 @@ async function sendEmailViaGmail(htmlBody, subject) {
 
   const messageId = sendResp.data.id;
 
-  // Mark as Important — this only works via the Gmail API, not plain SMTP.
+  // Mark as Important - this only works via the Gmail API, not plain SMTP.
   await gmail.users.messages.modify({
     userId: 'me',
     id: messageId,
@@ -174,7 +187,7 @@ async function sendEmailViaGmail(htmlBody, subject) {
 
 async function main() {
   if (!APIFY_TOKEN) throw new Error('Missing APIFY_TOKEN in .env');
-  if (!process.env.GOOGLE_REFRESH_TOKEN) throw new Error('Missing GOOGLE_REFRESH_TOKEN — run get-refresh-token.js once first');
+  if (!process.env.GOOGLE_REFRESH_TOKEN) throw new Error('Missing GOOGLE_REFRESH_TOKEN - run get-refresh-token.js once first');
 
   const resultsByLocation = [];
 
@@ -188,13 +201,13 @@ async function main() {
 
   const totalJobs = resultsByLocation.reduce((sum, r) => sum + r.jobs.length, 0);
   if (totalJobs === 0) {
-    console.log('No matching jobs today — skipping email.');
+    console.log('No matching jobs today - skipping email.');
     return;
   }
 
   const html = buildEmailHtml(resultsByLocation);
   const dateStr = new Date().toISOString().slice(0, 10);
-  const subject = `Cybersecurity Jobs (0-3 yrs) — Bengaluru & Pune — ${dateStr}`;
+  const subject = `Cybersecurity Jobs (0-3 yrs) - Bengaluru & Pune - ${dateStr}`;
 
   const messageId = await sendEmailViaGmail(html, subject);
   console.log(`Sent and marked Important. Message ID: ${messageId}`);

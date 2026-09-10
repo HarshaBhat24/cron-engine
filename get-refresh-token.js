@@ -1,7 +1,7 @@
 // get-refresh-token.js
 // Run this ONCE, locally, to get a Gmail API refresh token for the cron script.
 // Usage: node get-refresh-token.js
-// It will print a URL — open it, log in as bharsha12121@gmail.com, approve,
+// It will print a URL - open it, log in as bharsha12121@gmail.com, approve,
 // then paste the resulting code back into the terminal.
 
 require('dotenv').config();
