@@ -61,7 +61,7 @@ async function runApifySearch({ location, keywords }) {
     autoConvertToAiSearch: true,
     datePosted: 'past24Hours',
     keywords,
-    limitPerSource: 100,
+    limitPerSource: 250,
     location,
     scrapeCompany: false,
   };
