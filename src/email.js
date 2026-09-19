@@ -103,7 +103,7 @@ async function sendEmailViaGmail(htmlBody, subject) {
 
   const messageId = sendResp.data.id;
 
-  // Mark as Important — only possible via the Gmail API, not plain SMTP.
+  // Mark as Important - only possible via the Gmail API, not plain SMTP.
   await gmail.users.messages.modify({
     userId: 'me',
     id: messageId,

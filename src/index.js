@@ -1,5 +1,5 @@
 // src/index.js
-// Entry point — orchestrates fetch → title filter → LLM JD filter → email.
+// Entry point - orchestrates fetch → title filter → LLM JD filter → email.
 // Run manually:  node src/index.js
 // Run via cron:  0 18 * * * cd /path/to/cron-job-search && node src/index.js >> digest.log 2>&1
 
@@ -18,11 +18,11 @@ async function main() {
     throw new Error('Missing APIFY_TOKEN in .env');
   }
   if (!GOOGLE_REFRESH_TOKEN) {
-    throw new Error('Missing GOOGLE_REFRESH_TOKEN — run: npm run auth');
+    throw new Error('Missing GOOGLE_REFRESH_TOKEN - run: npm run auth');
   }
   if (!GROQ_API_KEY) {
     console.warn(
-      '[WARN] GROQ_API_KEY not set — LLM experience check will be skipped ' +
+      '[WARN] GROQ_API_KEY not set - LLM experience check will be skipped ' +
       '(all title-filtered jobs are kept).'
     );
   }
@@ -34,18 +34,21 @@ async function main() {
   for (const search of SEARCHES) {
     console.log(`\nFetching: ${search.location}...`);
 
-    // Step 1 — Apify scrape
+    // Step 1 - Apify scrape
     const rawJobs = await runApifySearch(search);
 
-    // Step 2 — synchronous title heuristic filter
+    // Step 2 - synchronous title heuristic filter
     const titleFiltered = filterJobs(rawJobs);
     console.log(`  ${rawJobs.length} raw → ${titleFiltered.length} after title filter`);
 
-    // Step 3 — async LLM JD experience filter (Groq fallback chain)
+    // Step 3 - async LLM JD experience filter (Groq fallback chain)
+    // The 1.5 s pause between calls keeps sequential requests comfortably
+    // under Groq's tokens-per-minute quota on the free tier.
     const llmFiltered = [];
-    for (const job of titleFiltered) {
-      const keep = await checkJDWithLLM(job.descriptionText);
-      if (keep === 1) llmFiltered.push(job);
+    for (let i = 0; i < titleFiltered.length; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 1500));
+      const keep = await checkJDWithLLM(titleFiltered[i].descriptionText);
+      if (keep === 1) llmFiltered.push(titleFiltered[i]);
     }
     console.log(`  ${titleFiltered.length} after title filter → ${llmFiltered.length} after LLM JD check`);
 
@@ -57,7 +60,7 @@ async function main() {
   const totalJobs = resultsByLocation.reduce((sum, r) => sum + r.jobs.length, 0);
 
   if (totalJobs === 0) {
-    console.log('\nNo matching jobs today — skipping email.');
+    console.log('\nNo matching jobs today - skipping email.');
     return;
   }
 

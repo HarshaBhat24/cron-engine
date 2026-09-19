@@ -3,7 +3,7 @@
 //
 // Usage:
 //   npm run auth
-//   — or —
+//   - or -
 //   node scripts/get-refresh-token.js
 //
 // Opens an OAuth2 consent URL; paste the returned code back into the terminal.
@@ -18,7 +18,7 @@ const readline     = require('readline');
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  'urn:ietf:wg:oauth:2.0:oob' // out-of-band redirect — no local server needed
+  'urn:ietf:wg:oauth:2.0:oob' // out-of-band redirect - no local server needed
 );
 
 const SCOPES = [

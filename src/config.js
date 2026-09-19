@@ -28,24 +28,21 @@ const SEARCHES = [
 
 // Title must match at least one of these. Entries that were pure substrings
 // of another entry (e.g. 'cloud security', 'aws security', 'application
-// security' — all caught by 'security' alone) have been removed to reduce
+// security' - all caught by 'security' alone) have been removed to reduce
 // maintenance cost with zero extra coverage.
 const SECURITY_KEYWORDS = [
   'security', 'cyber', 'soc', 'iam', 'siem', 'dlp', 'pentest', 'penetration',
-  'vulnerability', 'malware', 'infosec', 'sailpoint', 'cyberark', 'saviynt',
-  'devsecops', 'defender', 'cnapp', 'cspm', 'beyondtrust', 'grc',
+  'vulnerability', 'malware', 'infosec', 'binary analysis', 'adversary emulation',
+  'devsecops', 'defender', 'appsec', 'prodsec', 'sast', 'dast', 'iast',
   'red team', 'blue team', 'purple team', 'incident response', 'exploit',
   'offensive', 'ethical hacker', 'bug bounty', 'reverse engineer',
-  'binary analysis', 'adversary emulation', 'cwpp', 'dspm', 'sase', 'ztna',
-  'wiz', 'prisma cloud', 'lacework', 'appsec', 'prodsec', 'sast', 'dast',
-  'iast', 'snyk', 'veracode', 'checkmarx',
 ];
 
 // Title must NOT contain any of these.
 const SENIORITY_EXCLUDE = [
   'senior', 'sr.', 'sr ', 'staff', 'lead', 'principal', 'director',
   'head of', 'manager', 'architect', 'vp ', 'chief', 'II ', 'III',
-  'compliance', 'governance', 'risk', 'audit', 'ciso', 'Archt',
+  'compliance', 'governance', 'risk', 'audit', 'ciso', 'Archt', 'GRC'
 ];
 
 // ---------- DESCRIPTION YEARS FILTER (experimental) ----------
@@ -69,13 +66,31 @@ const GROQ_MODELS = [
 
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 
-const JD_SYSTEM_PROMPT = `You are an assistant that analyses job descriptions to determine the required years of experience.
+const JD_SYSTEM_PROMPT = `You are a job-description analyser. Your only job is to determine whether a JD requires 2 or more years of experience.
+
+Output format - respond with ONLY valid JSON, exactly one of:
+  {"verdict": 1}   ← experience < 2 years, OR no experience requirement mentioned
+  {"verdict": 0}   ← experience requirement is 2 or more years
 
 Rules:
-- Reply with ONLY the single digit 1 or 0. No other text, no punctuation, no explanation.
-- Reply 1 if the JD mentions less than 2 years of experience OR mentions no specific experience requirement at all.
-- Reply 0 if the JD mentions a requirement of 2 or more years of experience.
-- When in doubt (ambiguous phrasing), reply 1.`;
+- Output NOTHING except the JSON object. No explanation, no markdown, no extra keys.
+- When in doubt or phrasing is ambiguous, use {"verdict": 1}.
+
+Examples:
+User: "We are looking for a fresher or 0–1 year experienced candidate."
+Assistant: {"verdict": 1}
+
+User: "Minimum 3 years of hands-on experience in cybersecurity required."
+Assistant: {"verdict": 0}
+
+User: "5+ years of experience is mandatory for this role."
+Assistant: {"verdict": 0}
+
+User: "No prior experience needed - we will provide full training."
+Assistant: {"verdict": 1}
+
+User: "2+ years of experience in information security or a related field."
+Assistant: {"verdict": 0}`;
 
 // ---------- EXPORTS ----------
 
