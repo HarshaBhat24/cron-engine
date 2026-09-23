@@ -9,7 +9,7 @@ const { google } = require('googleapis');
 // ---------- CONFIG ----------
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
-const TO_EMAIL = process.env.TO_EMAIL || 'bharsha12121@gmail.com';
+const TO_EMAIL = process.env.TO_EMAIL;
 
 const SEARCHES = [
   { location: 'Bengaluru, Karnataka, India', keywords: 'cybersecurity' },

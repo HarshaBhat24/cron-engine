@@ -2,11 +2,11 @@
   "name": "cron-job-search",
   "version": "1.0.0",
   "description": "Daily filtered LinkedIn cybersecurity job digest, emailed via Gmail API and marked Important.",
-  "main": "job-digest.js",
+  "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node job-digest.js",
-    "auth": "node get-refresh-token.js"
+    "start": "node src/index.js",
+    "auth": "node scripts/get-refresh-token.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
