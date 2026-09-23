@@ -82,6 +82,103 @@ async function runApifySearch({ location, keywords }) {
   return runResp.json();
 }
 
+// ---------- GROQ LLM FILTERING ----------
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
+  'mixtral-8x7b-32768',
+  'gemma2-9b-it',
+];
+
+async function callGroqLLM(prompt, modelIndex = 0) {
+  if (!GROQ_API_KEY) {
+    return { verdict: 1, reason: 'GROQ_API_KEY not configured', model: 'N/A' };
+  }
+
+  if (modelIndex >= GROQ_MODELS.length) {
+    console.warn('  [LLM Warning] All Groq fallback models failed or rate-limited. Keeping job by default.');
+    return { verdict: 1, reason: 'All fallback models failed', model: 'fallback-none' };
+  }
+
+  const model = GROQ_MODELS[modelIndex];
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an AI assistant that evaluates job descriptions for required years of experience. Output ONLY JSON: {"verdict": 1 or 0, "reason": "short explanation"}.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.1,
+      }),
+    });
+
+    if (res.status === 429 || !res.ok) {
+      console.warn(`  [LLM Fallback] Model ${model} HTTP ${res.status}. Falling back to next model...`);
+      return callGroqLLM(prompt, modelIndex + 1);
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      console.warn(`  [LLM Fallback] Model ${model} returned empty content. Falling back to next model...`);
+      return callGroqLLM(prompt, modelIndex + 1);
+    }
+
+    const parsed = JSON.parse(content);
+    return {
+      verdict: parsed.verdict === 1 || parsed.verdict === '1' ? 1 : 0,
+      reason: parsed.reason || 'Evaluated by LLM',
+      model,
+    };
+  } catch (err) {
+    console.warn(`  [LLM Error] Exception with model ${model}: ${err.message}. Falling back to next model...`);
+    return callGroqLLM(prompt, modelIndex + 1);
+  }
+}
+
+async function passesLlmFilter(job) {
+  if (!GROQ_API_KEY) return true;
+
+  const description = job.description || job.descriptionText || job.text || '';
+  if (!description || description.trim().length === 0) {
+    console.log(`  [LLM Check] "${job.title}" -> KEPT (No job description available)`);
+    return true;
+  }
+
+  const truncatedDesc = description.slice(0, 3000);
+  const prompt = `Evaluate the following job title and job description for required experience.
+
+Job Title: ${job.title}
+
+Job Description:
+${truncatedDesc}
+
+Rules:
+- Return {"verdict": 1, "reason": "..."} if required experience is LESS than 2 years (0-1 years, 0-2 years, entry level, freshers, graduate) OR if experience is NOT mentioned.
+- Return {"verdict": 0, "reason": "..."} if required experience is 2 YEARS OR MORE (e.g. 2+, 3+, 2-5 years, senior experience, 3+ yrs).`;
+
+  const result = await callGroqLLM(prompt);
+  const status = result.verdict === 1 ? 'KEPT' : 'EXCLUDED';
+  console.log(`  [LLM Check] [Model: ${result.model}] "${job.title}" @ "${job.companyName || 'Unknown'}" -> ${status} | Reason: ${result.reason}`);
+  return result.verdict === 1;
+}
+
 // ---------- FILTERING ----------
 
 function passesTitleFilter(title) {
@@ -93,7 +190,7 @@ function passesTitleFilter(title) {
 
 function passesDescriptionYearsCheck(description) {
   if (!CHECK_DESCRIPTION_YEARS) return true;
-  if (!description) return true; // no description text to check, don't exclude on missing data
+  if (!description) return true;
 
   const matches = [...description.matchAll(/(\d{1,2})\s*\+?\s*(?:-|to)?\s*(\d{1,2})?\s*\+?\s*years?/gi)];
   if (matches.length === 0) return true;
@@ -102,10 +199,33 @@ function passesDescriptionYearsCheck(description) {
   return minYearsFound <= MAX_YEARS;
 }
 
-function filterJobs(rawJobs) {
-  return rawJobs.filter(
+async function filterJobs(rawJobs) {
+  const titleFiltered = rawJobs.filter(
     (job) => passesTitleFilter(job.title) && passesDescriptionYearsCheck(job.description)
   );
+
+  console.log(`  [Title Filter] ${rawJobs.length} raw jobs -> ${titleFiltered.length} matched title & exclude criteria`);
+
+  if (!GROQ_API_KEY) {
+    console.log('  [LLM Filter] GROQ_API_KEY is missing. Skipping LLM experience check.');
+    return titleFiltered;
+  }
+
+  if (titleFiltered.length === 0) {
+    return [];
+  }
+
+  console.log(`  [LLM Filter] Starting experience screening for ${titleFiltered.length} title-matched jobs using Groq API...`);
+  const llmResults = await Promise.all(
+    titleFiltered.map(async (job) => {
+      const pass = await passesLlmFilter(job);
+      return { job, pass };
+    })
+  );
+
+  const finalJobs = llmResults.filter((r) => r.pass).map((r) => r.job);
+  console.log(`  [LLM Filter] Summary: ${titleFiltered.length} candidates -> ${finalJobs.length} passed experience requirements.`);
+  return finalJobs;
 }
 
 // ---------- EMAIL BUILD ----------
@@ -186,16 +306,21 @@ async function sendEmailViaGmail(htmlBody, subject) {
 // ---------- MAIN ----------
 
 async function main() {
-  if (!APIFY_TOKEN) throw new Error('Missing APIFY_TOKEN in .env');
-  if (!process.env.GOOGLE_REFRESH_TOKEN) throw new Error('Missing GOOGLE_REFRESH_TOKEN - run get-refresh-token.js once first');
+  console.log('=== STARTING LINKEDIN JOB DIGEST ===');
+  if (!APIFY_TOKEN) throw new Error('Missing APIFY_TOKEN in environment');
+  if (!process.env.GOOGLE_REFRESH_TOKEN) throw new Error('Missing GOOGLE_REFRESH_TOKEN in environment - run get-refresh-token.js once first');
+
+  console.log(`[Config] APIFY_TOKEN: Present`);
+  console.log(`[Config] GOOGLE_REFRESH_TOKEN: Present`);
+  console.log(`[Config] GROQ_API_KEY: ${GROQ_API_KEY ? 'Present (LLM Screening Enabled)' : 'MISSING (LLM Screening Disabled)'}`);
+  console.log(`[Config] Recipient: ${TO_EMAIL}`);
 
   const resultsByLocation = [];
 
   for (const search of SEARCHES) {
-    console.log(`Fetching: ${search.location}...`);
+    console.log(`\n--- Fetching Location: ${search.location} ---`);
     const rawJobs = await runApifySearch(search);
-    const filtered = filterJobs(rawJobs);
-    console.log(`  ${rawJobs.length} raw -> ${filtered.length} after filtering`);
+    const filtered = await filterJobs(rawJobs);
     resultsByLocation.push({ location: search.location, jobs: filtered });
   }
 
