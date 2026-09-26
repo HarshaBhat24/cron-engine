@@ -20,10 +20,9 @@ The second-layer filter evaluates the raw JD text using Groq's OpenAI-compatible
 
 If a model encounters a rate limit (HTTP 429), API error, or unexpected output, it automatically falls back to the next model in sequence:
 
-1. `llama-3.3-70b-versatile`
-2. `llama-3.1-8b-instant`
-3. `mixtral-8x7b-32768`
-4. `gemma2-9b-it`
+1. `openai/gpt-oss-120b`
+2. `qwen/qwen3.8-27b`
+3. `openai/gpt-oss-20b`
 
 > **Note:** If `GROQ_API_KEY` is not set or all models in the fallback chain fail, the script defaults to keeping the job (`verdict: 1`) so no valid listings are silently lost.
 

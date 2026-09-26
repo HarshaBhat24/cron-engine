@@ -1,6 +1,5 @@
 // src/filter.js
-// Heuristic title-based and optional description-years-based filtering.
-// These filters are synchronous and require no external API calls.
+// Heuristic title-based, regex word-boundary, and description-years filtering.
 
 'use strict';
 
@@ -11,41 +10,33 @@ const {
   MAX_YEARS,
 } = require('./config');
 
-// ---------- REGEX SETUP ----------
-
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Compiled once at module load for efficiency.
 const SECURITY_REGEX = new RegExp(
   SECURITY_KEYWORDS.map(escapeRegex).join('|'),
   'i'
 );
 
-// ---------- FILTER FUNCTIONS ----------
+const EXCLUDE_REGEX = new RegExp(
+  `\\b(${SENIORITY_EXCLUDE.map(escapeRegex).join('|')})\\b`,
+  'i'
+);
 
 /**
- * Returns true if the job title contains a security keyword
- * and does NOT contain a seniority exclusion term.
- *
- * @param {string} title
- * @returns {boolean}
+ * Returns true if the job title matches security keywords
+ * and does NOT contain any seniority exclusion term at word boundaries.
  */
 function passesTitleFilter(title) {
-  const t = (title || '').toLowerCase();
-  const hasSecurityTerm  = SECURITY_REGEX.test(t);
-  const hasExcludedTerm  = SENIORITY_EXCLUDE.some((k) => t.includes(k.toLowerCase()));
+  const t = (title || '').trim();
+  const hasSecurityTerm = SECURITY_REGEX.test(t);
+  const hasExcludedTerm = EXCLUDE_REGEX.test(t);
   return hasSecurityTerm && !hasExcludedTerm;
 }
 
 /**
- * If CHECK_DESCRIPTION_YEARS is enabled, returns false when a description
- * explicitly requires more than MAX_YEARS years of experience.
- * Defaults to true (keep) when the flag is off or data is missing.
- *
- * @param {string} description
- * @returns {boolean}
+ * Checks optional description years criteria.
  */
 function passesDescriptionYearsCheck(description) {
   if (!CHECK_DESCRIPTION_YEARS) return true;
@@ -61,17 +52,27 @@ function passesDescriptionYearsCheck(description) {
 }
 
 /**
- * Applies both title and description-years filters to a raw job array.
- *
- * @param {object[]} rawJobs
- * @returns {object[]}
+ * Filters a raw job array by title and description rules.
  */
 function filterJobs(rawJobs) {
   return rawJobs.filter(
     (job) =>
       passesTitleFilter(job.title) &&
-      passesDescriptionYearsCheck(job.description)
+      passesDescriptionYearsCheck(job.description || job.descriptionText)
   );
 }
 
-module.exports = { passesTitleFilter, passesDescriptionYearsCheck, filterJobs };
+/**
+ * Deduplicates jobs across search locations based on link or title+company.
+ */
+function deduplicateJobs(jobs) {
+  const seen = new Set();
+  return jobs.filter((j) => {
+    const key = j.link || j.id || `${(j.title || '').toLowerCase().trim()}|${(j.companyName || '').toLowerCase().trim()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+module.exports = { passesTitleFilter, passesDescriptionYearsCheck, filterJobs, deduplicateJobs };
