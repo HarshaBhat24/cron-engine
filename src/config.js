@@ -37,14 +37,16 @@ const SECURITY_KEYWORDS = [
 
 const SENIORITY_EXCLUDE = [
   'senior', 'sr', 'staff', 'lead', 'principal', 'director',
-  'head of', 'manager', 'architect', 'vp', 'chief', 'ii', 'iii',
-  'compliance', 'governance', 'risk', 'audit', 'ciso', 'archt'
+  'head of', 'manager', 'architect', 'vp', 'vice president', 'avp', 'chief',
+  'ii', 'iii', 'iv', 'l2', 'l3', 'l4', 'ciso', 'archt',
+  'advisor', 'officer', 'specialist', 'expert', 'escalation',
+  'compliance', 'governance', 'risk', 'audit'
 ];
 
 // ---------- DESCRIPTION YEARS FILTER ----------
 
-const CHECK_DESCRIPTION_YEARS = false;
-const MAX_YEARS = 3;
+const CHECK_DESCRIPTION_YEARS = true;
+const MAX_YEARS = 2;
 
 // ---------- LLM CONFIG ----------
 
@@ -57,7 +59,7 @@ const GROQ_MODELS = [
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const LLM_BATCH_SIZE = 5;
 
-const JD_SYSTEM_PROMPT = `You are an AI assistant that evaluates job descriptions in batches to check required years of experience. Output valid JSON only.`;
+const JD_SYSTEM_PROMPT = `You are a strict technical job screener evaluating job descriptions for entry-level positions requiring 0 to 2 years of experience. Output valid JSON only.`;
 
 module.exports = {
   APIFY_TOKEN,
@@ -76,3 +78,4 @@ module.exports = {
   LLM_BATCH_SIZE,
   JD_SYSTEM_PROMPT,
 };
+

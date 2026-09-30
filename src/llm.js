@@ -10,7 +10,7 @@ const {
   JD_SYSTEM_PROMPT,
 } = require('./config');
 
-const BATCH_MAX_DESC_CHARS = 4500;
+const BATCH_MAX_DESC_CHARS = 15000;
 const MAX_429_RETRIES = 1;
 
 function sleep(ms) {
@@ -40,7 +40,7 @@ async function checkJDBatchWithLLM(jobsBatch) {
   }
 
   // Calculate per-job character limit to strictly cap total prompt size
-  const maxCharsPerJob = Math.min(1200, Math.floor(BATCH_MAX_DESC_CHARS / jobsBatch.length));
+  const maxCharsPerJob = Math.min(3000, Math.floor(BATCH_MAX_DESC_CHARS / jobsBatch.length));
 
   const itemsToEvaluate = jobsBatch.map((job, index) => {
     const desc = (job.description || job.descriptionText || job.text || '').trim();
@@ -53,7 +53,7 @@ async function checkJDBatchWithLLM(jobsBatch) {
     };
   });
 
-  const prompt = `Evaluate the following batch of ${itemsToEvaluate.length} jobs for required experience level.
+  const prompt = `Evaluate the following batch of ${itemsToEvaluate.length} jobs for required experience level. Target audience is early career (0 to 2 years experience).
 
 ${itemsToEvaluate.map(item => `--- JOB ID ${item.id} ---
 Title: ${item.title}
@@ -62,8 +62,9 @@ Description:
 ${item.description || '(No description provided)'}`).join('\n\n')}
 
 Rules for each job:
-- Return "verdict": 1 if required experience is LESS than 2 years (0-1 years, 0-2 years, entry level, freshers, graduate) OR if experience is NOT mentioned / description is missing.
-- Return "verdict": 0 if required experience is 2 YEARS OR MORE (e.g. 2+, 3+, 2-5 years, senior experience, 3+ yrs).
+- Return "verdict": 1 ONLY IF required experience is 0 TO 2 YEARS (e.g. 0-1 years, 0-2 years, 1-2 years, entry level, freshers, graduate, intern).
+- Return "verdict": 0 IF required experience is MORE THAN 2 YEARS (e.g. 2+ years, 3+ years, 4+ years, 2-5 years, 3-5 years, senior experience, 5+ yrs) OR if the job title indicates Senior, Lead, Manager, VP, AVP, Officer, Advisor, Specialist, Expert, or Level 2/3/4 (L2/L3/L4/IV).
+- Return "verdict": 0 IF experience is NOT mentioned but title implies a mid/senior role.
 
 Output MUST be a valid JSON object with key "results" containing an array of objects:
 {"results": [{"id": 0, "verdict": 1, "reason": "short explanation"}, ...]}`;

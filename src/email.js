@@ -72,7 +72,7 @@ function buildEmailHtml(resultsByLocation, stats = {}) {
       <!-- Header -->
       <div style="margin-bottom: 20px; text-align: center;">
         <h2 style="margin: 0 0 6px 0; font-size: 22px; color: #0f172a;">⚡ Cybersecurity Job Digest</h2>
-        <p style="margin: 0; color: #64748b; font-size: 13px;">LinkedIn (0-3 yrs) scraped & LLM verified in past 24 hours</p>
+        <p style="margin: 0; color: #64748b; font-size: 13px;">LinkedIn (0-2 yrs) scraped & LLM verified in past 24 hours</p>
       </div>
 
       <!-- Metrics Card -->

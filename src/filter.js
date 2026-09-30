@@ -29,26 +29,39 @@ const EXCLUDE_REGEX = new RegExp(
  * and does NOT contain any seniority exclusion term at word boundaries.
  */
 function passesTitleFilter(title) {
-  const t = (title || '').trim();
-  const hasSecurityTerm = SECURITY_REGEX.test(t);
-  const hasExcludedTerm = EXCLUDE_REGEX.test(t);
+  // Normalize title by converting underscores and hyphens to spaces so boundary \b works on terms like IN_Manager
+  const normalizedTitle = (title || '').replace(/[-_]/g, ' ').trim();
+  const hasSecurityTerm = SECURITY_REGEX.test(normalizedTitle);
+  const hasExcludedTerm = EXCLUDE_REGEX.test(normalizedTitle);
   return hasSecurityTerm && !hasExcludedTerm;
 }
 
 /**
- * Checks optional description years criteria.
+ * Checks description years criteria for maximum allowed experience (0-2 years).
  */
 function passesDescriptionYearsCheck(description) {
   if (!CHECK_DESCRIPTION_YEARS) return true;
   if (!description) return true;
 
+  // Match patterns like "3+ years", "4-6 years", "10+ yrs", "5 to 8 years", etc.
   const matches = [
-    ...description.matchAll(/(\d{1,2})\s*\+?\s*(?:-|to)?\s*(\d{1,2})?\s*\+?\s*years?/gi),
+    ...description.matchAll(/(\d{1,2})\s*(?:\+|to|-)?\s*(\d{1,2})?\s*(?:\+\s*)?years?/gi),
   ];
   if (matches.length === 0) return true;
 
-  const minYearsFound = Math.min(...matches.map((m) => parseInt(m[1], 10)));
-  return minYearsFound <= MAX_YEARS;
+  for (const m of matches) {
+    const minVal = parseInt(m[1], 10);
+    // Ignore historical company age mentions like "100+ years of history"
+    const fullMatch = m[0].toLowerCase();
+    if (fullMatch.includes('history') || fullMatch.includes('financial experience')) continue;
+
+    // If minVal > MAX_YEARS (e.g. 3+ years, 4-6 years, 5+ years), reject job immediately
+    if (minVal > MAX_YEARS) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -58,7 +71,7 @@ function filterJobs(rawJobs) {
   return rawJobs.filter(
     (job) =>
       passesTitleFilter(job.title) &&
-      passesDescriptionYearsCheck(job.description || job.descriptionText)
+      passesDescriptionYearsCheck(job.description || job.descriptionText || job.text)
   );
 }
 

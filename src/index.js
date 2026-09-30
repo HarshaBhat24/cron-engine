@@ -94,7 +94,7 @@ async function main() {
     totalFinal: totalFinalCount,
   });
   const dateStr = new Date().toISOString().slice(0, 10);
-  const subject = `Cybersecurity Jobs (0-3 yrs) - Bengaluru & Pune - ${dateStr}`;
+  const subject = `Cybersecurity Jobs (0-2 yrs) - Bengaluru & Pune - ${dateStr}`;
 
   const messageId = await sendEmailViaGmail(html, subject);
   console.log(`\nSent and marked Important. Message ID: ${messageId}`);
