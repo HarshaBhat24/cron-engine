@@ -7,7 +7,19 @@ require('dotenv').config();
 
 // ---------- ENV VARS ----------
 
-const APIFY_TOKEN  = process.env.APIFY_TOKEN;
+// Dynamically discovers all APIFY_TOKEN / APIFY_TOKEN_N keys from the environment.
+// Stored as { key, value } pairs so the original env var name is always preserved —
+// even when tokens are non-contiguous (e.g. only APIFY_TOKEN + APIFY_TOKEN_5 exist).
+const APIFY_TOKENS = [
+  { key: 'APIFY_TOKEN', value: process.env.APIFY_TOKEN },  // slot 1 (no suffix)
+  ...Object.keys(process.env)                               // slots 2-N, sorted numerically
+    .filter(k => /^APIFY_TOKEN_\d+$/.test(k))
+    .sort((a, b) => {
+      const n = (k) => parseInt(k.replace('APIFY_TOKEN_', ''), 10);
+      return n(a) - n(b);
+    })
+    .map(k => ({ key: k, value: process.env[k] })),
+].filter(({ value }) => Boolean(value));
 const TO_EMAIL     = process.env.TO_EMAIL;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -59,10 +71,10 @@ const GROQ_MODELS = [
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const LLM_BATCH_SIZE = 5;
 
-const JD_SYSTEM_PROMPT = `You are a strict technical job screener evaluating job descriptions for entry-level positions requiring 0 to 2 years of experience. Output valid JSON only.`;
+const JD_SYSTEM_PROMPT = `You are a technical job screener evaluating job descriptions for entry-level / early-career positions (0 to 2 years of experience or unspecified/ambiguous experience). Output valid JSON only.`;
 
 module.exports = {
-  APIFY_TOKEN,
+  APIFY_TOKENS,
   TO_EMAIL,
   GROQ_API_KEY,
   GOOGLE_CLIENT_ID,

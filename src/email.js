@@ -22,7 +22,16 @@ function escapeHtml(str) {
 }
 
 function buildEmailHtml(resultsByLocation, stats = {}) {
-  const { totalRaw = 0, totalTitle = 0, totalFinal = 0 } = stats;
+  const { totalRaw = 0, totalTitle = 0, totalFinal = 0, isLastToken = false, tokenLabel = '' } = stats;
+
+  const lastTokenWarning = isLastToken ? `
+    <div style="background-color: #fff1f2; border: 1.5px solid #f87171; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 12px;">
+      <span style="font-size: 20px; line-height: 1;">⚠️</span>
+      <div>
+        <strong style="color: #b91c1c; font-size: 14px; display: block; margin-bottom: 2px;">Last API Key in Use — Action Required</strong>
+        <span style="color: #7f1d1d; font-size: 13px;">This digest was scraped using <code style="background:#fee2e2;padding:1px 5px;border-radius:3px;">${tokenLabel}</code>, your last remaining Apify token with available quota. Please top up one of your Apify accounts or add a new token before the next run.</span>
+      </div>
+    </div>` : '';
 
   const sections = resultsByLocation
     .filter(({ jobs }) => jobs.length > 0)
@@ -69,6 +78,9 @@ function buildEmailHtml(resultsByLocation, stats = {}) {
   <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #0f172a;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
       
+      <!-- Last-token warning (only shown when all other tokens are exhausted) -->
+      ${lastTokenWarning}
+
       <!-- Header -->
       <div style="margin-bottom: 20px; text-align: center;">
         <h2 style="margin: 0 0 6px 0; font-size: 22px; color: #0f172a;">⚡ Cybersecurity Job Digest</h2>
