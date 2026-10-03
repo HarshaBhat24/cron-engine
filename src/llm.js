@@ -53,7 +53,7 @@ async function checkJDBatchWithLLM(jobsBatch) {
     };
   });
 
-  const prompt = `Evaluate the following batch of ${itemsToEvaluate.length} jobs for required experience level. Target audience is early career (0 to 2 years experience).
+  const prompt = `Evaluate the following batch of ${itemsToEvaluate.length} jobs for required experience level. Target audience is early career (0 to 2 years experience or unspecified/ambiguous experience).
 
 ${itemsToEvaluate.map(item => `--- JOB ID ${item.id} ---
 Title: ${item.title}
@@ -62,9 +62,9 @@ Description:
 ${item.description || '(No description provided)'}`).join('\n\n')}
 
 Rules for each job:
-- Return "verdict": 1 ONLY IF required experience is 0 TO 2 YEARS (e.g. 0-1 years, 0-2 years, 1-2 years, entry level, freshers, graduate, intern).
-- Return "verdict": 0 IF required experience is MORE THAN 2 YEARS (e.g. 2+ years, 3+ years, 4+ years, 2-5 years, 3-5 years, senior experience, 5+ yrs) OR if the job title indicates Senior, Lead, Manager, VP, AVP, Officer, Advisor, Specialist, Expert, or Level 2/3/4 (L2/L3/L4/IV).
-- Return "verdict": 0 IF experience is NOT mentioned but title implies a mid/senior role.
+- Return "verdict": 1 IF required experience is 0 TO 2 YEARS (e.g. 0-1 years, 0-2 years, 1-2 years, 2 years, entry level, freshers, graduate, intern).
+- Return "verdict": 1 IF required experience is NOT mentioned, UNKNOWN, AMBIGUOUS, UNSPECIFIED, or CANNOT BE DECIDED from the text (provided the title does not imply a senior/lead/manager role). When in doubt or uncertain, default to "verdict": 1 (include the job).
+- Return "verdict": 0 ONLY IF required experience is CLEARLY / EXPLICITLY MORE THAN 2 YEARS (e.g. 3+ years, 4+ years, 2-5 years, 3-5 years, senior experience, 5+ yrs) OR if the job title/role explicitly indicates Senior, Lead, Manager, VP, AVP, Director, Head, Architect, or Level 2/3/4 (L2/L3/L4/IV).
 
 Output MUST be a valid JSON object with key "results" containing an array of objects:
 {"results": [{"id": 0, "verdict": 1, "reason": "short explanation"}, ...]}`;

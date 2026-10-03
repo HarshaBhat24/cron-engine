@@ -3,7 +3,7 @@
 
 'use strict';
 
-const { APIFY_TOKEN, GOOGLE_REFRESH_TOKEN, GROQ_API_KEY, SEARCHES, LLM_BATCH_SIZE } = require('./config');
+const { APIFY_TOKENS, GOOGLE_REFRESH_TOKEN, GROQ_API_KEY, SEARCHES, LLM_BATCH_SIZE } = require('./config');
 const { runApifySearch }   = require('./apify');
 const { filterJobs, deduplicateJobs } = require('./filter');
 const { checkJDBatchWithLLM, sleep } = require('./llm');
@@ -12,9 +12,10 @@ const { buildEmailHtml, sendEmailViaGmail } = require('./email');
 async function main() {
   console.log('=== STARTING LINKEDIN JOB DIGEST ===');
 
-  if (!APIFY_TOKEN) {
-    throw new Error('Missing APIFY_TOKEN in .env');
+  if (!APIFY_TOKENS || APIFY_TOKENS.length === 0) {
+    throw new Error('Missing APIFY_TOKEN in .env (at least one token is required)');
   }
+  console.log(`[Config] ${APIFY_TOKENS.length} Apify token(s) configured – will use fallback chain if quota runs out.`);
   if (!GOOGLE_REFRESH_TOKEN) {
     throw new Error('Missing GOOGLE_REFRESH_TOKEN - run: npm run auth');
   }
@@ -29,9 +30,17 @@ async function main() {
   let totalRawCount = 0;
 
   // Step 1 & 2: Scrape and apply synchronous Title Filter per location
+  let usingLastToken = false;
+  let activeTokenLabel = '';
   for (const search of SEARCHES) {
     console.log(`\n--- Fetching Location: ${search.location} ---`);
-    const rawJobs = await runApifySearch(search);
+    const { jobs: rawJobs, isLastToken, tokenLabel } = await runApifySearch(search);
+    // Fix #3: only capture the label when it's actually the last token —
+    // a later search using an earlier token must not overwrite it.
+    if (isLastToken) {
+      usingLastToken = true;
+      activeTokenLabel = tokenLabel;
+    }
     totalRawCount += rawJobs.length;
 
     const titleFiltered = filterJobs(rawJobs);
@@ -92,6 +101,8 @@ async function main() {
     totalRaw: totalRawCount,
     totalTitle: totalTitleCount,
     totalFinal: totalFinalCount,
+    isLastToken: usingLastToken,
+    tokenLabel: activeTokenLabel,
   });
   const dateStr = new Date().toISOString().slice(0, 10);
   const subject = `Cybersecurity Jobs (0-2 yrs) - Bengaluru & Pune - ${dateStr}`;
