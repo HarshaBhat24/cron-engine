@@ -6,6 +6,7 @@
 const {
   SECURITY_KEYWORDS,
   SENIORITY_EXCLUDE,
+  COMPANY_EXCLUDE,
   CHECK_DESCRIPTION_YEARS,
   MAX_YEARS,
 } = require('./config');
@@ -23,6 +24,27 @@ const EXCLUDE_REGEX = new RegExp(
   `\\b(${SENIORITY_EXCLUDE.map(escapeRegex).join('|')})\\b`,
   'i'
 );
+
+// Helper to expand company exclude list (e.g. TCS -> Tata Consultancy Services)
+function expandCompanyList(list) {
+  const expanded = [...(list || [])];
+  if (
+    expanded.some((c) => c.toLowerCase() === 'tcs') &&
+    !expanded.some((c) => c.toLowerCase() === 'tata consultancy services')
+  ) {
+    expanded.push('Tata Consultancy Services');
+  }
+  return expanded;
+}
+
+const DEFAULT_EXPANDED_COMPANIES = expandCompanyList(COMPANY_EXCLUDE);
+const DEFAULT_COMPANY_EXCLUDE_REGEX =
+  DEFAULT_EXPANDED_COMPANIES.length > 0
+    ? new RegExp(
+        `\\b(${DEFAULT_EXPANDED_COMPANIES.map(escapeRegex).join('|')})\\b`,
+        'i'
+      )
+    : null;
 
 /**
  * Returns true if the job title matches security keywords
@@ -65,6 +87,42 @@ function passesDescriptionYearsCheck(description) {
 }
 
 /**
+ * Returns true if companyName does NOT match any excluded company.
+ * Case-insensitive word-boundary matching.
+ */
+function passesCompanyFilter(companyName, excludedCompanies = COMPANY_EXCLUDE) {
+  if (!companyName || typeof companyName !== 'string') return true;
+
+  let regex;
+  if (excludedCompanies === COMPANY_EXCLUDE) {
+    regex = DEFAULT_COMPANY_EXCLUDE_REGEX;
+  } else if (excludedCompanies && excludedCompanies.length > 0) {
+    const expanded = expandCompanyList(excludedCompanies);
+    regex = new RegExp(
+      `\\b(${expanded.map(escapeRegex).join('|')})\\b`,
+      'i'
+    );
+  }
+
+  if (!regex) return true;
+
+  const normalized = companyName.replace(/\./g, '').replace(/[-_]/g, ' ').trim();
+  return !regex.test(normalized);
+}
+
+/**
+ * Filters jobs by company exclusion rules.
+ * Jobs with company matching COMPANY_EXCLUDE will be excluded.
+ */
+function filterJobsByCompany(jobs, excludedCompanies = COMPANY_EXCLUDE) {
+  if (!Array.isArray(jobs)) return [];
+  return jobs.filter((job) => {
+    const company = job.companyName || job.company || '';
+    return passesCompanyFilter(company, excludedCompanies);
+  });
+}
+
+/**
  * Filters a raw job array by title and description rules.
  */
 function filterJobs(rawJobs) {
@@ -88,4 +146,11 @@ function deduplicateJobs(jobs) {
   });
 }
 
-module.exports = { passesTitleFilter, passesDescriptionYearsCheck, filterJobs, deduplicateJobs };
+module.exports = {
+  passesTitleFilter,
+  passesDescriptionYearsCheck,
+  passesCompanyFilter,
+  filterJobsByCompany,
+  filterJobs,
+  deduplicateJobs,
+};

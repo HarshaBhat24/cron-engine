@@ -8,11 +8,12 @@ For each configured location, the script:
 
 1. Requests recent jobs from the Apify LinkedIn jobs scraper (`descriptionText`).
 2. Applies a synchronous title filter (must include security keywords, exclude seniority keywords).
-3. Evaluates matching JDs via an **LLM fallback chain** (Groq API) to determine if experience required is `< 2 years` or unspecified (`verdict: 1`), vs `≥ 2 years` (`verdict: 0`).
-4. Sends the filtered results as an HTML email when at least one job matches.
-5. Adds Gmail's `IMPORTANT` label to the sent message.
+3. Applies company-based exclusion filter (ignores excluded service firms: Infosys, Wipro, Capgemini, TCS, IBM).
+4. Evaluates matching JDs via an **LLM fallback chain** (Groq API) to determine if experience required is `< 2 years` or unspecified (`verdict: 1`), vs `≥ 2 years` (`verdict: 0`).
+5. Sends the filtered results as an HTML email when at least one job matches.
+6. Adds Gmail's `IMPORTANT` label to the sent message.
 
-The default searches target cybersecurity roles in Bengaluru and Pune. Edit the `SEARCHES` array in `job-digest.js` to change locations or search keywords.
+The default searches target cybersecurity roles in Bengaluru and Pune. Edit the `SEARCHES` array in `src/config.js` to change locations or search keywords. Excluded companies can be customized via `COMPANY_EXCLUDE` in `src/config.js` or `.env`.
 
 ## LLM Experience Screening & Fallback Chain
 

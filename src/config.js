@@ -55,6 +55,16 @@ const SENIORITY_EXCLUDE = [
   'compliance', 'governance', 'risk', 'audit'
 ];
 
+// ---------- COMPANY FILTER ----------
+
+const DEFAULT_COMPANY_EXCLUDE = [
+  'Infosys', 'Wipro', 'Capgemini', 'TCS', 'Tata Consultancy Services', 'IBM',
+];
+
+const COMPANY_EXCLUDE = process.env.COMPANY_EXCLUDE
+  ? process.env.COMPANY_EXCLUDE.split(',').map((s) => s.trim()).filter(Boolean)
+  : DEFAULT_COMPANY_EXCLUDE;
+
 // ---------- DESCRIPTION YEARS FILTER ----------
 
 const CHECK_DESCRIPTION_YEARS = true;
@@ -83,6 +93,7 @@ module.exports = {
   SEARCHES,
   SECURITY_KEYWORDS,
   SENIORITY_EXCLUDE,
+  COMPANY_EXCLUDE,
   CHECK_DESCRIPTION_YEARS,
   MAX_YEARS,
   GROQ_MODELS,
