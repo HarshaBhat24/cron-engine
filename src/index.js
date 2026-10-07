@@ -1,11 +1,11 @@
 // src/index.js
-// Entry point - orchestrates fetch → title filter → deduplication → LLM batch filter → email.
+// Entry point - orchestrates fetch → title filter → deduplication → company filter → LLM batch filter → email.
 
 'use strict';
 
 const { APIFY_TOKENS, GOOGLE_REFRESH_TOKEN, GROQ_API_KEY, SEARCHES, LLM_BATCH_SIZE } = require('./config');
 const { runApifySearch }   = require('./apify');
-const { filterJobs, deduplicateJobs } = require('./filter');
+const { filterJobs, deduplicateJobs, passesCompanyFilter } = require('./filter');
 const { checkJDBatchWithLLM, sleep } = require('./llm');
 const { buildEmailHtml, sendEmailViaGmail } = require('./email');
 
@@ -55,33 +55,51 @@ async function main() {
     allTitleFiltered.push(...titleFiltered);
   }
 
-  // Step 3: Deduplicate BEFORE LLM screening to avoid redundant LLM calls
+  // Step 3: Deduplicate candidate listings across locations
   const uniqueTitleJobs = deduplicateJobs(allTitleFiltered);
   const totalTitleCount = uniqueTitleJobs.length;
-  console.log(`\n[Deduplication] Combined ${allTitleFiltered.length} candidate listings into ${uniqueTitleJobs.length} unique jobs before LLM screening.`);
+  console.log(`\n[Deduplication] Combined ${allTitleFiltered.length} candidate listings into ${uniqueTitleJobs.length} unique jobs.`);
 
   if (uniqueTitleJobs.length === 0) {
     console.log('\nNo matching jobs found after title filter - skipping email.');
     return;
   }
 
-  // Step 4: LLM Batch Screening on unique jobs
+  // Step 4: Company Filter (after title filter, before LLM filter)
+  const candidateJobs = [];
+  for (const job of uniqueTitleJobs) {
+    const company = job.companyName || job.company || '';
+    if (passesCompanyFilter(company)) {
+      candidateJobs.push(job);
+    } else {
+      console.log(`  [Company Filter] Excluded "${job.title}" @ "${company || 'Unknown'}"`);
+    }
+  }
+  const totalCompanyCount = candidateJobs.length;
+  console.log(`\n[Company Filter] ${uniqueTitleJobs.length} unique jobs -> ${totalCompanyCount} passed company criteria (excluded ${uniqueTitleJobs.length - totalCompanyCount}).`);
+
+  if (candidateJobs.length === 0) {
+    console.log('\nNo matching jobs found after company filter - skipping email.');
+    return;
+  }
+
+  // Step 5: LLM Batch Screening on candidate jobs
   let uniqueApprovedJobs = [];
   if (!GROQ_API_KEY) {
-    uniqueApprovedJobs = uniqueTitleJobs;
+    uniqueApprovedJobs = candidateJobs;
   } else {
-    console.log(`\n--- LLM Screening (${uniqueTitleJobs.length} unique jobs, Batch size: ${LLM_BATCH_SIZE}) ---`);
+    console.log(`\n--- LLM Screening (${candidateJobs.length} candidate jobs, Batch size: ${LLM_BATCH_SIZE}) ---`);
 
-    for (let i = 0; i < uniqueTitleJobs.length; i += LLM_BATCH_SIZE) {
+    for (let i = 0; i < candidateJobs.length; i += LLM_BATCH_SIZE) {
       if (i > 0) await sleep(1000);
-      const batch = uniqueTitleJobs.slice(i, i + LLM_BATCH_SIZE);
+      const batch = candidateJobs.slice(i, i + LLM_BATCH_SIZE);
       const verdicts = await checkJDBatchWithLLM(batch);
 
       batch.forEach((job, idx) => {
         if (verdicts[idx]) uniqueApprovedJobs.push(job);
       });
     }
-    console.log(`[LLM Summary] ${uniqueTitleJobs.length} candidates -> ${uniqueApprovedJobs.length} passed LLM experience requirements.`);
+    console.log(`[LLM Summary] ${candidateJobs.length} candidates -> ${uniqueApprovedJobs.length} passed LLM experience requirements.`);
   }
 
   const totalFinalCount = uniqueApprovedJobs.length;
@@ -96,7 +114,7 @@ async function main() {
     return { location: search.location, jobs: locJobs };
   });
 
-  // Step 5: Send HTML Digest Email
+  // Step 6: Send HTML Digest Email
   const html = buildEmailHtml(resultsByLocation, {
     totalRaw: totalRawCount,
     totalTitle: totalTitleCount,
