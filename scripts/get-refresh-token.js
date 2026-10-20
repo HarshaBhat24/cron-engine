@@ -43,10 +43,10 @@ const authUrl = oauth2Client.generateAuthUrl({
 });
 
 console.log('\n=== Gmail OAuth2 Refresh Token Generator ===\n');
-console.log('STEP 1 — Make sure the following URI is listed under');
+console.log('STEP 1 - Make sure the following URI is listed under');
 console.log('         "Authorized redirect URIs" in Google Cloud Console');
 console.log(`         OAuth 2.0 Client > ${REDIRECT_URI}\n`);
-console.log('STEP 2 — Open this URL in your browser:\n');
+console.log('STEP 2 - Open this URL in your browser:\n');
 console.log(authUrl);
 console.log('\nWaiting for Google to redirect back to localhost…\n');
 

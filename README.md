@@ -10,10 +10,40 @@ For each configured location, the script:
 2. Applies a synchronous title filter (must include security keywords, exclude seniority keywords).
 3. Applies company-based exclusion filter (ignores excluded service firms: Infosys, Wipro, Capgemini, TCS, IBM).
 4. Evaluates matching JDs via an **LLM fallback chain** (Groq API) to determine if experience required is `< 2 years` or unspecified (`verdict: 1`), vs `≥ 2 years` (`verdict: 0`).
-5. Sends the filtered results as an HTML email when at least one job matches.
-6. Adds Gmail's `IMPORTANT` label to the sent message.
+5. Sends the filtered results as **batched HTML emails** - 3 job cards per email. The final email always includes the remaining jobs (1–3) plus a **summary stats card** (scraped / title-matched / LLM-approved counts). Each sent message is marked as **Important**.
 
 The default searches target cybersecurity roles in Bengaluru and Pune. Edit the `SEARCHES` array in `src/config.js` to change locations or search keywords. Excluded companies can be customized via `COMPANY_EXCLUDE` in `src/config.js` or `.env`.
+
+## Email format
+
+Each batch email has the subject:
+```
+Cybersecurity Jobs (0-2 yrs) - Bengaluru & Pune - YYYY-MM-DD [1/N]
+```
+
+The final email has the subject:
+```
+Cybersecurity Jobs (0-2 yrs) - Bengaluru & Pune - YYYY-MM-DD [N/N - Summary]
+```
+
+All batch emails are threaded into a single Gmail inbox conversation via the Gmail API's native `threadId` field - the `threadId` returned by the first send is passed to every subsequent batch, so all N emails collapse into one thread.
+
+Every job card contains:
+- **Job title**, company name, and location badge
+- **Job Description box** - full JD rendered inline and always visible (Gmail strips `<details>`/`<summary>`, so no collapsible mechanism is used; select text directly to copy)
+- **View Role →** - deep link to the original LinkedIn listing
+
+Jobs are sorted by location before batching and each email shows a city sub-header when the location changes within a batch.
+
+The ⚠️ last-Apify-token warning banner appears in **every** batch email so a mid-run failure never silently hides the quota alert.
+
+The summary (last) email additionally shows a metrics card at the top:
+
+| Scraped | Title Match | LLM Approved |
+|---------|-------------|--------------|
+| total raw results | after title filter | after LLM screen |
+
+To change the number of jobs per email, edit `MAIL_BATCH_SIZE` in `src/index.js` (default: `3`).
 
 ## LLM Experience Screening & Fallback Chain
 
@@ -93,7 +123,7 @@ Open the URL printed by the script, approve access, paste the returned code into
 npm start
 ```
 
-The script prints the number of raw, title-filtered, and LLM-filtered jobs for each location. If there are matches, it sends an email to `TO_EMAIL` and marks it Important.
+The script prints the number of raw, title-filtered, and LLM-filtered jobs for each location. If there are matches, it sends batched emails to `TO_EMAIL` and marks each Important.
 
 ## Scheduling with cron
 
@@ -122,4 +152,3 @@ Run the digest every day at 6:00 PM using absolute paths:
 - **Gmail authorization failure / invalid_grant:** Generate a new refresh token with `npm run auth`. If the app is in Google Cloud "Testing" mode, publish it to "Production".
 - **LLM Rate Limits (HTTP 429):** The script automatically pauses based on `Retry-After` headers and retries or moves to the next model in the chain.
 - **No email received:** Check terminal output or `digest.log`; no email is sent when the filtered result is empty.
-
