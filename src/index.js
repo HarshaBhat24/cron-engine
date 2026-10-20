@@ -7,7 +7,9 @@ const { APIFY_TOKENS, GOOGLE_REFRESH_TOKEN, GROQ_API_KEY, SEARCHES, LLM_BATCH_SI
 const { runApifySearch }   = require('./apify');
 const { filterJobs, deduplicateJobs, passesCompanyFilter } = require('./filter');
 const { checkJDBatchWithLLM, sleep } = require('./llm');
-const { buildEmailHtml, sendEmailViaGmail } = require('./email');
+const { buildBatchEmailHtml, buildSummaryEmailHtml, sendEmailViaGmail } = require('./email');
+
+const MAIL_BATCH_SIZE = 3;
 
 async function main() {
   console.log('=== STARTING LINKEDIN JOB DIGEST ===');
@@ -35,8 +37,6 @@ async function main() {
   for (const search of SEARCHES) {
     console.log(`\n--- Fetching Location: ${search.location} ---`);
     const { jobs: rawJobs, isLastToken, tokenLabel } = await runApifySearch(search);
-    // Fix #3: only capture the label when it's actually the last token —
-    // a later search using an earlier token must not overwrite it.
     if (isLastToken) {
       usingLastToken = true;
       activeTokenLabel = tokenLabel;
@@ -108,25 +108,72 @@ async function main() {
     return;
   }
 
-  // Group approved jobs back into resultsByLocation for clean email sections
-  const resultsByLocation = SEARCHES.map((search) => {
-    const locJobs = uniqueApprovedJobs.filter((job) => job._location === search.location);
-    return { location: search.location, jobs: locJobs };
-  });
+  // Sort by location so jobs from the same city land in the same batch where possible.
+  // This makes location sub-headers in each email coherent.
+  uniqueApprovedJobs.sort((a, b) => (a._location || '').localeCompare(b._location || ''));
 
-  // Step 6: Send HTML Digest Email
-  const html = buildEmailHtml(resultsByLocation, {
-    totalRaw: totalRawCount,
-    totalTitle: totalTitleCount,
-    totalFinal: totalFinalCount,
-    isLastToken: usingLastToken,
-    tokenLabel: activeTokenLabel,
-  });
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const subject = `Cybersecurity Jobs (0-2 yrs) - Bengaluru & Pune - ${dateStr}`;
+  // Step 6: Send batched HTML digest emails
+  // Chunk approved jobs into groups of MAIL_BATCH_SIZE.
+  // The last email always carries the remaining jobs (1–MAIL_BATCH_SIZE) + summary stats card.
+  const dateStr      = new Date().toISOString().slice(0, 10);
+  const totalBatches = Math.ceil(uniqueApprovedJobs.length / MAIL_BATCH_SIZE);
 
-  const messageId = await sendEmailViaGmail(html, subject);
-  console.log(`\nSent and marked Important. Message ID: ${messageId}`);
+  console.log(`\n--- Sending ${totalBatches} email(s) (${MAIL_BATCH_SIZE} jobs/mail, last mail = summary) ---`);
+
+  let sentCount    = 0;
+  let firstThreadId = null; // Captured from batch 1; passed to batches 2+ for Gmail threading
+
+  for (let i = 0; i < totalBatches; i++) {
+    const batchNum    = i + 1;
+    const batchJobs   = uniqueApprovedJobs.slice(i * MAIL_BATCH_SIZE, (i + 1) * MAIL_BATCH_SIZE);
+    const isLastBatch = batchNum === totalBatches;
+
+    // [N/N] for regular batches; [N/N - Summary] for the last one.
+    // Different subjects are fine for threading because we use the Gmail API threadId directly,
+    // not subject-based matching.
+    const subject = isLastBatch
+      ? `Cybersecurity Jobs (0-2 yrs) - Bengaluru & Pune - ${dateStr} [${batchNum}/${totalBatches} - Summary]`
+      : `Cybersecurity Jobs (0-2 yrs) - Bengaluru & Pune - ${dateStr} [${batchNum}/${totalBatches}]`;
+
+    const html = isLastBatch
+      ? buildSummaryEmailHtml(batchJobs, batchNum, totalBatches, {
+          totalRaw:    totalRawCount,
+          totalTitle:  totalTitleCount,
+          totalFinal:  totalFinalCount,
+          isLastToken: usingLastToken,
+          tokenLabel:  activeTokenLabel,
+        })
+      : buildBatchEmailHtml(batchJobs, batchNum, totalBatches, {
+          // Token warning on every batch so a mid-loop crash doesn't hide the critical alert
+          isLastToken: usingLastToken,
+          tokenLabel:  activeTokenLabel,
+        });
+
+    // Pass firstThreadId to batches 2+ so the Gmail API places them in the same thread.
+    // threadId in requestBody is the only reliable threading mechanism for the Gmail REST API.
+    const sendOpts = firstThreadId ? { threadId: firstThreadId } : {};
+
+    try {
+      const { messageId, threadId } = await sendEmailViaGmail(html, subject, sendOpts);
+      sentCount++;
+      if (!firstThreadId) firstThreadId = threadId; // Anchor all subsequent batches
+      console.log(`  Sent mail ${batchNum}/${totalBatches}${isLastBatch ? ' (Summary)' : ''}. Message ID: ${messageId}`);
+    } catch (err) {
+      // Log and continue - partial delivery is better than losing all remaining batches
+      console.error(`  [Email Error] Failed to send batch ${batchNum}/${totalBatches}: ${err.message}`);
+    }
+
+    // Small delay between sends to avoid Gmail API rate limits
+    if (!isLastBatch) await sleep(1500);
+  }
+
+  // If every batch failed (e.g. expired credentials, network outage), exit non-zero so
+  // cron / monitoring systems detect a real failure rather than silent success.
+  if (sentCount === 0) {
+    throw new Error(`Failed to deliver any batch emails (0/${totalBatches} sent). Check Gmail API credentials and network connectivity.`);
+  }
+
+  console.log(`\n=== DIGEST COMPLETE - ${sentCount}/${totalBatches} email(s) sent ===`);
 }
 
 main().catch((err) => {
