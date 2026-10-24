@@ -1,9 +1,6 @@
 name: cron-job-search
 
 on:
-  schedule:
-    # 6:00 PM IST = 12:30 UTC. GitHub Actions cron is always UTC.
-    - cron: '30 12 * * *'
   workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
 
 jobs:
