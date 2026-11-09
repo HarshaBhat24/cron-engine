@@ -1,8 +1,6 @@
 name: cron-job-search
 
 on:
-  schedule:
-    - cron: '30 12 * * *'  # 18:00 IST (12:30 UTC)
   workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
 
 jobs:
