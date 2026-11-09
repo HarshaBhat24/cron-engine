@@ -39,11 +39,12 @@ The ⚠️ last-Apify-token warning banner appears in **every** batch email so a
 
 The summary (last) email additionally shows a metrics card at the top:
 
-| Scraped | Title Match | LLM Approved |
-|---------|-------------|--------------|
-| total raw results | after title filter | after LLM screen |
+| Scraped | Title Match | Company Match | LLM Approved |
+|---------|-------------|---------------|--------------|
+| total raw results | after title filter | after company filter | after LLM screen |
 
-To change the number of jobs per email, edit `MAIL_BATCH_SIZE` in `src/index.js` (default: `3`).
+To change the number of jobs per email, configure `MAIL_BATCH_SIZE` in `.env` (default: `3`).
+To receive a daily heartbeat email even when 0 jobs match, set `SEND_EMPTY_DIGEST=true` in `.env`.
 
 ## LLM Experience Screening & Fallback Chain
 
@@ -101,6 +102,10 @@ GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 GOOGLE_REFRESH_TOKEN=
 TO_EMAIL=recipient@example.com
+
+# Optional custom searches (semicolon-separated for locations)
+SEARCH_LOCATIONS=Bengaluru, Karnataka, India; Pune, Maharashtra, India
+SEARCH_KEYWORDS=cybersecurity
 ```
 
 Never commit `.env` or share its values.
@@ -117,7 +122,15 @@ Open the URL printed by the script, approve access, paste the returned code into
 
 > **Note:** For Google Cloud projects in **Testing** publishing status, refresh tokens expire every 7 days. Move your OAuth consent screen status to **In Production** to avoid periodic re-authorization.
 
-### 6. Test the digest
+### 6. Run unit tests
+
+Verify keyword filters, seniority exclusion, company blacklists, and description experience checks:
+
+```bash
+npm test
+```
+
+### 7. Test the digest
 
 ```bash
 npm start
@@ -141,9 +154,16 @@ Run the digest every day at 6:00 PM using absolute paths:
 
 ## Project Structure
 
-- `job-digest.js` - Main entry point; orchestrates scraper, title filtering, Groq LLM check, and email dispatch.
-- `get-refresh-token.js` - Performs the one-time Gmail OAuth flow (`npm run auth`).
-- `.github/workflows/digest.yml` - GitHub Actions workflow schedule.
+- `job-digest.js` - Main entry runner delegating to `src/index.js`.
+- `src/index.js` - Orchestrator: scrape → title filter → company filter → state deduplication → LLM screen → batched email dispatch.
+- `src/filter.js` - Title matching, company exclusion rules, and description years filtering.
+- `src/llm.js` - Groq LLM batch screening with exponential backoff and fallback models.
+- `src/email.js` - HTML email generator (RFC 2047 encoding, Outlook-safe tables, summary stats) & Gmail API dispatcher.
+- `src/state.js` - Cross-run persistence (`.state.json`) with 7-day TTL pruning.
+- `src/config.js` - Centralized configuration and environment variable parsing.
+- `scripts/get-refresh-token.js` - Performs the one-time Gmail OAuth flow (`npm run auth`).
+- `.github/workflows/digest.yml` - GitHub Actions workflow schedule (runs daily at 18:00 IST / 12:30 UTC).
+- `test/filter.test.js` - Unit test suite covering all filtering, persistence, and email formatting logic.
 - `env.example` - Environment variable template.
 
 ## Troubleshooting

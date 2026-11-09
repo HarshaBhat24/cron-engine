@@ -28,8 +28,11 @@ const { APIFY_TOKENS } = require('./config');
 async function getRemainingQuota(tokenValue) {
   try {
     const resp = await fetch(
-      `https://api.apify.com/v2/users/me?token=${tokenValue}`,
-      { signal: AbortSignal.timeout(10_000) }
+      'https://api.apify.com/v2/users/me',
+      {
+        headers: { Authorization: `Bearer ${tokenValue}` },
+        signal: AbortSignal.timeout(10_000),
+      }
     );
 
     // 401 / 403 → bad/expired token, skip it
@@ -138,11 +141,15 @@ async function runApifySearch({ location, keywords }) {
 
     // ── Attempt the actual scrape ─────────────────────────────────────────────
     const resp = await fetch(
-      `https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${value}`,
+      'https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${value}`,
+        },
         body: JSON.stringify(runInput),
+        signal: AbortSignal.timeout(180_000),
       }
     );
 
@@ -165,7 +172,8 @@ async function runApifySearch({ location, keywords }) {
 
     // ── Success ───────────────────────────────────────────────────────────────
     _cachedIdx = index; // update cache so next location skips quota re-check
-    const jobs = await resp.json();
+    const data = await resp.json();
+    const jobs = Array.isArray(data) ? data : [];
     return { jobs, isLastToken, tokenLabel: key };
   }
 

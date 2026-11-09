@@ -21,6 +21,16 @@ function escapeHtml(str) {
   }[c]));
 }
 
+const MAX_EMAIL_DESC_CHARS = 800;
+
+function encodeMimeSubject(subject) {
+  if (!subject) return '';
+  if (!/[^\x00-\x7F]/.test(subject)) {
+    return subject;
+  }
+  return `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`;
+}
+
 /**
  * Builds a single job card.
  *
@@ -31,6 +41,8 @@ function escapeHtml(str) {
  *    redundant because the full JD is already rendered inline for direct text selection.
  *  - descriptionText (plain text) is preferred over description (raw HTML) to avoid
  *    rendering escaped tag soup in the email body.
+ *  - Long descriptions are truncated to MAX_EMAIL_DESC_CHARS to prevent hitting Gmail's 102 KB clipping limit.
+ *  - HTML table layout is used instead of flexbox for 100% desktop Outlook & legacy client compatibility.
  *
  * @param {object} job
  * @returns {string} HTML string
@@ -42,10 +54,14 @@ function buildJobCard(job) {
   const link     = job.link || '#';
 
   const rawDesc = (job.descriptionText || job.text || job.description || '').trim();
+  const isTruncated = rawDesc.length > MAX_EMAIL_DESC_CHARS;
+  const displayDesc = isTruncated
+    ? rawDesc.slice(0, MAX_EMAIL_DESC_CHARS).trim() + '...'
+    : rawDesc;
 
-  const htmlDesc = escapeHtml(rawDesc).replace(/\n/g, '<br>');
+  const htmlDesc = escapeHtml(displayDesc).replace(/\n/g, '<br>');
 
-  const jdSection = rawDesc
+  const jdSection = displayDesc
     ? `<div style="margin:10px 0;border:1px solid #e2e8f0;border-radius:6px;">
          <div style="background-color:#f8fafc;padding:8px 12px;border-bottom:1px solid #e2e8f0;">
            <span style="font-size:11px;font-weight:700;color:#64748b;
@@ -65,18 +81,23 @@ function buildJobCard(job) {
         <div style="font-size:13px;color:#475569;font-weight:500;">🏢 ${company}</div>
       </div>
       ${jdSection}
-      <div style="display:flex;align-items:center;justify-content:space-between;
-                  margin-top:12px;flex-wrap:wrap;gap:8px;">
-        <span style="display:inline-block;background-color:#eff6ff;color:#1d4ed8;font-size:12px;
-                     font-weight:500;padding:3px 10px;border-radius:9999px;">
-          📍 ${location}
-        </span>
-        <a href="${link}" target="_blank"
-           style="background-color:#2563eb;color:#ffffff;font-size:12px;font-weight:600;
-                  text-decoration:none;padding:6px 14px;border-radius:6px;display:inline-block;">
-          View Role &rarr;
-        </a>
-      </div>
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top:12px;">
+        <tr>
+          <td align="left" style="vertical-align:middle;">
+            <span style="display:inline-block;background-color:#eff6ff;color:#1d4ed8;font-size:12px;
+                         font-weight:500;padding:3px 10px;border-radius:9999px;">
+              📍 ${location}
+            </span>
+          </td>
+          <td align="right" style="vertical-align:middle;">
+            <a href="${link}" target="_blank"
+               style="background-color:#2563eb;color:#ffffff;font-size:12px;font-weight:600;
+                      text-decoration:none;padding:6px 14px;border-radius:6px;display:inline-block;">
+              View Role &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
     </div>`;
 }
 
@@ -179,11 +200,18 @@ function buildBatchEmailHtml(jobs, batchNum, totalBatches, opts = {}) {
  * @param {object[]} jobs
  * @param {number}   batchNum
  * @param {number}   totalBatches
- * @param {object}   [stats]  { totalRaw, totalTitle, totalFinal, isLastToken, tokenLabel }
+ * @param {object}   [stats]  { totalRaw, totalTitle, totalCompany, totalFinal, isLastToken, tokenLabel }
  * @returns {string}
  */
 function buildSummaryEmailHtml(jobs, batchNum, totalBatches, stats = {}) {
-  const { totalRaw = 0, totalTitle = 0, totalFinal = 0, isLastToken = false, tokenLabel = '' } = stats;
+  const {
+    totalRaw = 0,
+    totalTitle = 0,
+    totalCompany = 0,
+    totalFinal = 0,
+    isLastToken = false,
+    tokenLabel = '',
+  } = stats;
 
   const header = `
     ${isLastToken ? buildLastTokenWarning(tokenLabel) : ''}
@@ -196,6 +224,55 @@ function buildSummaryEmailHtml(jobs, batchNum, totalBatches, stats = {}) {
       </span>
     </div>
 
+    <!-- Stats card (Scraped -> Title Match -> Company Match -> LLM Approved) -->
+    <div style="background-color:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;
+                padding:12px;margin-bottom:24px;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="text-align:center;">
+        <tr>
+          <td width="25%">
+            <span style="font-size:18px;font-weight:700;color:#334155;display:block;">${totalRaw}</span>
+            <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Scraped</span>
+          </td>
+          <td width="25%" style="border-left:1px solid #cbd5e1;">
+            <span style="font-size:18px;font-weight:700;color:#2563eb;display:block;">${totalTitle}</span>
+            <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Title Match</span>
+          </td>
+          <td width="25%" style="border-left:1px solid #cbd5e1;">
+            <span style="font-size:18px;font-weight:700;color:#0891b2;display:block;">${totalCompany}</span>
+            <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Company Match</span>
+          </td>
+          <td width="25%" style="border-left:1px solid #cbd5e1;">
+            <span style="font-size:18px;font-weight:700;color:#16a34a;display:block;">${totalFinal}</span>
+            <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">LLM Approved</span>
+          </td>
+        </tr>
+      </table>
+    </div>`;
+
+  return buildEmailWrapper(header, buildJobCards(jobs));
+}
+
+/**
+ * Builds HTML for zero-result / heartbeat notification email.
+ * @param {object} [stats]
+ * @returns {string}
+ */
+function buildZeroResultEmailHtml(stats = {}) {
+  const {
+    totalRaw = 0,
+    totalTitle = 0,
+    totalCompany = 0,
+    isLastToken = false,
+    tokenLabel = '',
+  } = stats;
+
+  const header = `
+    ${isLastToken ? buildLastTokenWarning(tokenLabel) : ''}
+    <div style="margin-bottom:20px;text-align:center;">
+      <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;">⚡ Cybersecurity Job Digest</h2>
+      <p style="margin:0;color:#64748b;font-size:13px;">Daily Heartbeat · No matching early-career roles found today</p>
+    </div>
+
     <!-- Stats card -->
     <div style="background-color:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;
                 padding:12px;margin-bottom:24px;">
@@ -205,19 +282,29 @@ function buildSummaryEmailHtml(jobs, batchNum, totalBatches, stats = {}) {
             <span style="font-size:18px;font-weight:700;color:#334155;display:block;">${totalRaw}</span>
             <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Scraped</span>
           </td>
-          <td width="33%" style="border-left:1px solid #cbd5e1;border-right:1px solid #cbd5e1;">
+          <td width="33%" style="border-left:1px solid #cbd5e1;">
             <span style="font-size:18px;font-weight:700;color:#2563eb;display:block;">${totalTitle}</span>
             <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Title Match</span>
           </td>
-          <td width="33%">
-            <span style="font-size:18px;font-weight:700;color:#16a34a;display:block;">${totalFinal}</span>
-            <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">LLM Approved</span>
+          <td width="33%" style="border-left:1px solid #cbd5e1;">
+            <span style="font-size:18px;font-weight:700;color:#0891b2;display:block;">${totalCompany}</span>
+            <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Company Match</span>
           </td>
         </tr>
       </table>
     </div>`;
 
-  return buildEmailWrapper(header, buildJobCards(jobs));
+  const content = `
+    <div style="text-align:center;padding:24px 12px;color:#64748b;">
+      <p style="font-size:15px;margin:0 0 8px 0;color:#334155;font-weight:600;">
+        No new early-career roles passed filtering today.
+      </p>
+      <p style="font-size:13px;margin:0;line-height:1.6;">
+        The search and screening pipeline completed successfully. We will monitor LinkedIn and notify you when new matching positions are posted.
+      </p>
+    </div>`;
+
+  return buildEmailWrapper(header, content);
 }
 
 /**
@@ -245,7 +332,7 @@ async function sendEmailViaGmail(htmlBody, subject, opts = {}) {
 
   const headerLines = [
     `To: ${TO_EMAIL}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeMimeSubject(subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=utf-8',
   ];
@@ -281,9 +368,11 @@ async function sendEmailViaGmail(htmlBody, subject, opts = {}) {
 
 module.exports = {
   escapeHtml,
+  encodeMimeSubject,
   buildJobCard,
   buildJobCards,
   buildBatchEmailHtml,
   buildSummaryEmailHtml,
+  buildZeroResultEmailHtml,
   sendEmailViaGmail,
 };
