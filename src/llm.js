@@ -11,7 +11,7 @@ const {
 } = require('./config');
 
 const BATCH_MAX_DESC_CHARS = 15000;
-const MAX_429_RETRIES = 1;
+const MAX_429_RETRIES = 3;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -25,6 +25,24 @@ function parseGroqRetryMs(errText) {
   if (msMatch) return Math.ceil(parseFloat(msMatch[1])) + 300;
 
   return null;
+}
+
+/**
+ * Prepares description preserving both the beginning (context/role) and the
+ * end (where qualifications and years of experience requirements typically reside).
+ */
+function prepareDescription(rawDesc, maxChars) {
+  const desc = (rawDesc || '').trim();
+  if (desc.length <= maxChars) return desc;
+
+  const separator = '\n\n... [middle truncated] ...\n\n';
+  const availableChars = maxChars - separator.length;
+  if (availableChars <= 0) return desc.slice(0, maxChars);
+
+  const headChars = Math.floor(availableChars / 2);
+  const tailChars = availableChars - headChars;
+
+  return desc.slice(0, headChars) + separator + desc.slice(-tailChars);
 }
 
 /**
@@ -49,7 +67,7 @@ async function checkJDBatchWithLLM(jobsBatch) {
       id: index,
       title: job.title || 'Unknown Title',
       company: job.companyName || 'Unknown Company',
-      description: desc.slice(0, maxCharsPerJob),
+      description: prepareDescription(desc, maxCharsPerJob),
     };
   });
 
@@ -99,8 +117,10 @@ Output MUST be a valid JSON object with key "results" containing an array of obj
       if (resp.status === 429) {
         const errText = await resp.text().catch(() => '');
         if (retriesLeft > 0) {
-          const waitMs = parseGroqRetryMs(errText) ?? 4000;
-          console.warn(`  [LLM Retry] ${model} rate-limited (429). Waiting ${(waitMs / 1000).toFixed(1)}s then retrying...`);
+          const attempt = MAX_429_RETRIES - retriesLeft + 1;
+          const parsedWait = parseGroqRetryMs(errText);
+          const waitMs = parsedWait ?? Math.min(2000 * Math.pow(2, attempt - 1), 30_000);
+          console.warn(`  [LLM Retry] ${model} rate-limited (429). Attempt ${attempt}/${MAX_429_RETRIES}. Waiting ${(waitMs / 1000).toFixed(1)}s then retrying...`);
           await sleep(waitMs);
           retriesLeft--;
           continue;
@@ -125,7 +145,9 @@ Output MUST be a valid JSON object with key "results" containing an array of obj
 
       const content = data?.choices?.[0]?.message?.content || '';
       try {
-        const parsed = JSON.parse(content);
+        // Strip code fences if the model wrapped output in ```json ... ```
+        const cleanedContent = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const parsed = JSON.parse(cleanedContent);
         const resultsArr = parsed.results || parsed.jobs || (Array.isArray(parsed) ? parsed : null);
 
         if (Array.isArray(resultsArr)) {

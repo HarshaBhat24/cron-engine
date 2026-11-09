@@ -6,10 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "auth": "node scripts/get-refresh-token.js"
+    "auth": "node scripts/get-refresh-token.js",
+    "test": "node test/filter.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "googleapis": "^144.0.0"
+    "googleapis": "^188.0.0"
   }
 }

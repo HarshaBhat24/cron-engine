@@ -20,7 +20,6 @@
 require('dotenv').config();
 const { google } = require('googleapis');
 const http       = require('http');
-const url        = require('url');
 
 const PORT          = 3000;
 const REDIRECT_URI  = `http://localhost:${PORT}/callback`;
@@ -51,14 +50,14 @@ console.log(authUrl);
 console.log('\nWaiting for Google to redirect back to localhost…\n');
 
 const server = http.createServer(async (req, res) => {
-  const parsedUrl = url.parse(req.url, true);
+  const parsedUrl = new URL(req.url, `http://localhost:${PORT}`);
   if (parsedUrl.pathname !== '/callback') {
     res.end('Not found');
     return;
   }
 
-  const code  = parsedUrl.query.code;
-  const error = parsedUrl.query.error;
+  const code  = parsedUrl.searchParams.get('code');
+  const error = parsedUrl.searchParams.get('error');
 
   if (error) {
     res.writeHead(200, { 'Content-Type': 'text/html' });

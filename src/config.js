@@ -29,10 +29,23 @@ const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
 
 // ---------- SEARCH TARGETS ----------
 
-const SEARCHES = [
-  { location: 'Bengaluru, Karnataka, India', keywords: 'cybersecurity' },
-  { location: 'Pune, Maharashtra, India',    keywords: 'cybersecurity' },
+const DEFAULT_SEARCH_LOCATIONS = [
+  'Bengaluru, Karnataka, India',
+  'Pune, Maharashtra, India',
 ];
+
+const SEARCH_LOCATIONS = process.env.SEARCH_LOCATIONS
+  ? process.env.SEARCH_LOCATIONS.split(/[;\n]/).map((s) => s.trim()).filter(Boolean)
+  : DEFAULT_SEARCH_LOCATIONS;
+
+const SEARCH_KEYWORDS = (process.env.SEARCH_KEYWORDS || '').trim() || 'cybersecurity';
+
+const parsedLocations = SEARCH_LOCATIONS.length > 0 ? SEARCH_LOCATIONS : DEFAULT_SEARCH_LOCATIONS;
+
+const SEARCHES = parsedLocations.map((location) => ({
+  location,
+  keywords: SEARCH_KEYWORDS,
+}));
 
 // ---------- TITLE FILTER ----------
 
@@ -52,7 +65,7 @@ const SENIORITY_EXCLUDE = [
   'head of', 'manager', 'architect', 'vp', 'vice president', 'avp', 'chief',
   'ii', 'iii', 'iv', 'l2', 'l3', 'l4', 'ciso', 'archt',
   'advisor', 'officer', 'specialist', 'expert', 'escalation',
-  'compliance', 'governance', 'risk', 'audit'
+  'compliance', 'governance', 'risk', 'audit', 'auditor'
 ];
 
 // ---------- COMPANY FILTER ----------
@@ -83,6 +96,11 @@ const LLM_BATCH_SIZE = 5;
 
 const JD_SYSTEM_PROMPT = `You are a technical job screener evaluating job descriptions for entry-level / early-career positions (0 to 2 years of experience or unspecified/ambiguous experience). Output valid JSON only.`;
 
+// ---------- EMAIL & DELIVERY CONFIG ----------
+
+const MAIL_BATCH_SIZE = parseInt(process.env.MAIL_BATCH_SIZE, 10) || 3;
+const SEND_EMPTY_DIGEST = process.env.SEND_EMPTY_DIGEST === 'true';
+
 module.exports = {
   APIFY_TOKENS,
   TO_EMAIL,
@@ -90,6 +108,9 @@ module.exports = {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   GOOGLE_REFRESH_TOKEN,
+  DEFAULT_SEARCH_LOCATIONS,
+  SEARCH_LOCATIONS: parsedLocations,
+  SEARCH_KEYWORDS,
   SEARCHES,
   SECURITY_KEYWORDS,
   SENIORITY_EXCLUDE,
@@ -100,5 +121,7 @@ module.exports = {
   GROQ_ENDPOINT,
   LLM_BATCH_SIZE,
   JD_SYSTEM_PROMPT,
+  MAIL_BATCH_SIZE,
+  SEND_EMPTY_DIGEST,
 };
 
