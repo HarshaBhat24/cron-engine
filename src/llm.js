@@ -139,8 +139,11 @@ Output MUST be a valid JSON object with key "results" containing an array of obj
             keepMap.set(Number(item.id), v);
             const jobObj = jobsBatch[Number(item.id)];
             if (jobObj) {
-              const status = v ? 'KEPT' : 'EXCLUDED';
-              console.log(`  [LLM Check] [Model: ${model}] "${jobObj.title}" @ "${jobObj.companyName || 'Unknown'}" -> ${status} | Reason: ${item.reason || 'Evaluated'}`);
+              const status = v ? '✓ KEPT' : '✗ REJECTED by LLM';
+              const company = jobObj.companyName || jobObj.company || 'Unknown Company';
+              const link = jobObj.link || jobObj.jobUrl || jobObj.url || 'No link provided';
+              console.log(`  [LLM Check] [Model: ${model}] "${jobObj.title}" @ "${company}" -> ${status} | Reason: ${item.reason || 'Evaluated'}`);
+              console.log(`              Link: ${link}`);
             }
           }
 
@@ -148,7 +151,8 @@ Output MUST be a valid JSON object with key "results" containing an array of obj
             if (keepMap.has(idx)) {
               return keepMap.get(idx);
             }
-            console.warn(`  [LLM Warning] Job #${idx} ("${jobObj.title}") was missing in LLM response. Defaulting to KEPT.`);
+            const fallbackLink = jobObj.link || jobObj.jobUrl || jobObj.url || 'No link provided';
+            console.warn(`  [LLM Warning] Job #${idx} ("${jobObj.title}") was missing in LLM response. Defaulting to KEPT.\n                Link: ${fallbackLink}`);
             return true;
           });
         }

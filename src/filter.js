@@ -16,7 +16,7 @@ function escapeRegex(str) {
 }
 
 const SECURITY_REGEX = new RegExp(
-  SECURITY_KEYWORDS.map(escapeRegex).join('|'),
+  `\\b(${SECURITY_KEYWORDS.map(escapeRegex).join('|')})\\b`,
   'i'
 );
 
@@ -65,17 +65,43 @@ function passesDescriptionYearsCheck(description) {
   if (!CHECK_DESCRIPTION_YEARS) return true;
   if (!description) return true;
 
-  // Match patterns like "3+ years", "4-6 years", "10+ yrs", "5 to 8 years", etc.
+  // Match patterns like "3+ years", "4-6 years", "10+ yrs", "5 to 8 years", "1 yr", etc.
   const matches = [
-    ...description.matchAll(/(\d{1,2})\s*(?:\+|to|-)?\s*(\d{1,2})?\s*(?:\+\s*)?years?/gi),
+    ...description.matchAll(/(\d{1,3})\s*(?:\+|to|-)?\s*(\d{1,2})?\s*(?:\+\s*)?(?:years?|yrs?)\b/gi),
   ];
   if (matches.length === 0) return true;
 
   for (const m of matches) {
     const minVal = parseInt(m[1], 10);
-    // Ignore historical company age mentions like "100+ years of history"
-    const fullMatch = m[0].toLowerCase();
-    if (fullMatch.includes('history') || fullMatch.includes('financial experience')) continue;
+    // Inspect context window around the match to ignore company legacy/history mentions (e.g. "100+ years of history")
+    const windowStart = Math.max(0, m.index - 30);
+    const windowEnd = Math.min(description.length, m.index + m[0].length + 40);
+    const context = description.slice(windowStart, windowEnd).toLowerCase();
+
+    if (
+      context.includes('history') ||
+      context.includes('financial experience') ||
+      context.includes('legacy') ||
+      context.includes('in business') ||
+      context.includes('founded') ||
+      context.includes('established')
+    ) {
+      continue;
+    }
+
+    // Inspect following and preceding context to ignore degree/education duration
+    // e.g. "4-year degree", "4 years degree", "4-year Bachelor's", "3-4 year diploma"
+    const afterText = description.slice(m.index + m[0].length, m.index + m[0].length + 35).toLowerCase();
+    const beforeText = description.slice(Math.max(0, m.index - 30), m.index).toLowerCase();
+
+    const isDegreeMatch =
+      (!/^\s*(?:of\s+)?(?:work\s+)?experience/i.test(afterText) &&
+        /^\s*[-/]?\s*(?:degree|bachelor|diploma|college|university|undergraduate|accredited)/i.test(afterText)) ||
+      /(?:bachelor'?s?|degree|diploma)\s*\(?\s*$/i.test(beforeText);
+
+    if (isDegreeMatch) {
+      continue;
+    }
 
     // If minVal > MAX_YEARS (e.g. 3+ years, 4-6 years, 5+ years), reject job immediately
     if (minVal > MAX_YEARS) {
@@ -123,14 +149,85 @@ function filterJobsByCompany(jobs, excludedCompanies = COMPANY_EXCLUDE) {
 }
 
 /**
+ * Evaluates a single job object and returns a clear verdict and reason.
+ * Useful for logging every single search result so users can verify rejections.
+ *
+ * @param {object} job
+ * @returns {{ passed: boolean, reason: string }}
+ */
+function evaluateJob(job) {
+  if (!job) {
+    return { passed: false, reason: 'Empty job listing' };
+  }
+
+  const title = job.title;
+  if (!title || typeof title !== 'string' || !title.trim()) {
+    return { passed: false, reason: 'Missing or empty title' };
+  }
+
+  const normalizedTitle = title.replace(/[-_]/g, ' ').trim();
+  const hasSecurityTerm = SECURITY_REGEX.test(normalizedTitle);
+  if (!hasSecurityTerm) {
+    return { passed: false, reason: 'No cybersecurity keyword in title' };
+  }
+
+  const excludeMatch = normalizedTitle.match(EXCLUDE_REGEX);
+  if (excludeMatch) {
+    return { passed: false, reason: `Seniority keyword "${excludeMatch[0]}" in title` };
+  }
+
+  const desc = job.description || job.descriptionText || job.text || '';
+  if (CHECK_DESCRIPTION_YEARS && desc) {
+    const matches = [
+      ...desc.matchAll(/(\d{1,3})\s*(?:\+|to|-)?\s*(\d{1,2})?\s*(?:\+\s*)?(?:years?|yrs?)\b/gi),
+    ];
+    for (const m of matches) {
+      const minVal = parseInt(m[1], 10);
+      const windowStart = Math.max(0, m.index - 30);
+      const windowEnd = Math.min(desc.length, m.index + m[0].length + 40);
+      const context = desc.slice(windowStart, windowEnd).toLowerCase();
+
+      if (
+        context.includes('history') ||
+        context.includes('financial experience') ||
+        context.includes('legacy') ||
+        context.includes('in business') ||
+        context.includes('founded') ||
+        context.includes('established')
+      ) {
+        continue;
+      }
+
+      const afterText = desc.slice(m.index + m[0].length, m.index + m[0].length + 35).toLowerCase();
+      const beforeText = desc.slice(Math.max(0, m.index - 30), m.index).toLowerCase();
+
+      const isDegreeMatch =
+        (!/^\s*(?:of\s+)?(?:work\s+)?experience/i.test(afterText) &&
+          /^\s*[-/]?\s*(?:degree|bachelor|diploma|college|university|undergraduate|accredited)/i.test(afterText)) ||
+        /(?:bachelor'?s?|degree|diploma)\s*\(?\s*$/i.test(beforeText);
+
+      if (isDegreeMatch) {
+        continue;
+      }
+
+      if (minVal > MAX_YEARS) {
+        return {
+          passed: false,
+          reason: `Description requires ${m[0]} (exceeds max ${MAX_YEARS} yrs)`,
+        };
+      }
+    }
+  }
+
+  return { passed: true, reason: 'Matched security title & experience criteria' };
+}
+
+/**
  * Filters a raw job array by title and description rules.
  */
 function filterJobs(rawJobs) {
-  return rawJobs.filter(
-    (job) =>
-      passesTitleFilter(job.title) &&
-      passesDescriptionYearsCheck(job.description || job.descriptionText || job.text)
-  );
+  if (!Array.isArray(rawJobs)) return [];
+  return rawJobs.filter((job) => evaluateJob(job).passed);
 }
 
 /**
@@ -153,4 +250,5 @@ module.exports = {
   filterJobsByCompany,
   filterJobs,
   deduplicateJobs,
+  evaluateJob,
 };

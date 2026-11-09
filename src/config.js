@@ -37,7 +37,7 @@ const SEARCHES = [
 // ---------- TITLE FILTER ----------
 
 const SECURITY_KEYWORDS = [
-  'security', 'cyber', 'soc', 'iam', 'siem', 'dlp', 'pentest', 'penetration',
+  'cybersecurity', 'security', 'cyber', 'soc', 'iam', 'siem', 'dlp', 'pentest', 'penetration',
   'vulnerability', 'malware', 'infosec', 'sailpoint', 'cyberark', 'saviynt',
   'devsecops', 'defender', 'cnapp', 'cspm', 'beyondtrust', 'grc',
   'red team', 'blue team', 'purple team', 'incident response', 'exploit',

@@ -5,11 +5,20 @@
 
 const { APIFY_TOKENS, GOOGLE_REFRESH_TOKEN, GROQ_API_KEY, SEARCHES, LLM_BATCH_SIZE } = require('./config');
 const { runApifySearch }   = require('./apify');
-const { filterJobs, deduplicateJobs, passesCompanyFilter } = require('./filter');
+const { filterJobs, deduplicateJobs, passesCompanyFilter, evaluateJob } = require('./filter');
 const { checkJDBatchWithLLM, sleep } = require('./llm');
 const { buildBatchEmailHtml, buildSummaryEmailHtml, sendEmailViaGmail } = require('./email');
 
 const MAIL_BATCH_SIZE = 3;
+
+function getJobDetails(job) {
+  return {
+    title: (job && job.title) || 'Unknown Title',
+    company: (job && (job.companyName || job.company)) || 'Unknown Company',
+    link: (job && (job.link || job.jobUrl || job.url)) || 'No link available',
+    location: (job && (job._location || job.location || '')).split(',')[0].trim() || 'Unknown Location',
+  };
+}
 
 async function main() {
   console.log('=== STARTING LINKEDIN JOB DIGEST ===');
@@ -43,22 +52,54 @@ async function main() {
     }
     totalRawCount += rawJobs.length;
 
-    const titleFiltered = filterJobs(rawJobs);
-    console.log(`  [Title Filter] ${rawJobs.length} raw jobs -> ${titleFiltered.length} matched title & exclude criteria`);
+    console.log(`\n  --- Evaluated All ${rawJobs.length} Search Result(s) for ${search.location} ---`);
+    const titleFiltered = [];
 
-    // Attach location tag to job items
-    titleFiltered.forEach((job) => {
-      if (!job._location) job._location = search.location;
+    rawJobs.forEach((job, idx) => {
+      const { title, company, link } = getJobDetails(job);
+      const evalResult = evaluateJob(job);
+      const statusLabel = evalResult.passed ? '✓ PASSED' : `✗ REJECTED (${evalResult.reason})`;
+
+      console.log(`  ${idx + 1}. [${statusLabel}] "${title}" @ "${company}"`);
+      console.log(`     Link: ${link}`);
+
+      if (evalResult.passed) {
+        if (!job._location) job._location = search.location;
+        titleFiltered.push(job);
+      }
     });
+
+    console.log(`  => [Summary for ${search.location}] ${rawJobs.length} raw jobs evaluated -> ${titleFiltered.length} passed title & description filter.`);
 
     rawJobsByLocation.push({ location: search.location, titleJobs: titleFiltered });
     allTitleFiltered.push(...titleFiltered);
   }
 
   // Step 3: Deduplicate candidate listings across locations
-  const uniqueTitleJobs = deduplicateJobs(allTitleFiltered);
+  const seenKeys = new Set();
+  const uniqueTitleJobs = [];
+  const duplicateJobs = [];
+
+  for (const job of allTitleFiltered) {
+    const key = job.link || job.id || `${(job.title || '').toLowerCase().trim()}|${(job.companyName || job.company || '').toLowerCase().trim()}`;
+    if (seenKeys.has(key)) {
+      duplicateJobs.push(job);
+    } else {
+      seenKeys.add(key);
+      uniqueTitleJobs.push(job);
+    }
+  }
+
   const totalTitleCount = uniqueTitleJobs.length;
   console.log(`\n[Deduplication] Combined ${allTitleFiltered.length} candidate listings into ${uniqueTitleJobs.length} unique jobs.`);
+  if (duplicateJobs.length > 0) {
+    console.log(`  Excluded ${duplicateJobs.length} duplicate listing(s) seen across locations:`);
+    duplicateJobs.forEach((job, idx) => {
+      const { title, company, link } = getJobDetails(job);
+      console.log(`    ${idx + 1}. [DUPLICATE] "${title}" @ "${company}"`);
+      console.log(`       Link: ${link}`);
+    });
+  }
 
   if (uniqueTitleJobs.length === 0) {
     console.log('\nNo matching jobs found after title filter - skipping email.');
@@ -67,16 +108,19 @@ async function main() {
 
   // Step 4: Company Filter (after title filter, before LLM filter)
   const candidateJobs = [];
+  const excludedByCompany = [];
   for (const job of uniqueTitleJobs) {
-    const company = job.companyName || job.company || '';
+    const { title, company, link } = getJobDetails(job);
     if (passesCompanyFilter(company)) {
       candidateJobs.push(job);
     } else {
-      console.log(`  [Company Filter] Excluded "${job.title}" @ "${company || 'Unknown'}"`);
+      excludedByCompany.push(job);
+      console.log(`  [Company Filter] ✗ REJECTED: "${title}" @ "${company}" (matched company exclusion rule)`);
+      console.log(`                   Link: ${link}`);
     }
   }
   const totalCompanyCount = candidateJobs.length;
-  console.log(`\n[Company Filter] ${uniqueTitleJobs.length} unique jobs -> ${totalCompanyCount} passed company criteria (excluded ${uniqueTitleJobs.length - totalCompanyCount}).`);
+  console.log(`\n[Company Filter] ${uniqueTitleJobs.length} unique jobs -> ${totalCompanyCount} passed company criteria (excluded ${excludedByCompany.length}).`);
 
   if (candidateJobs.length === 0) {
     console.log('\nNo matching jobs found after company filter - skipping email.');
@@ -107,6 +151,19 @@ async function main() {
     console.log('\nNo matching jobs today after LLM screening - skipping email.');
     return;
   }
+
+  // Print all approved jobs to console with Title, Company, Location, and Link
+  console.log(`\n==================================================`);
+  console.log(`           APPROVED JOBS FOR DIGEST (${totalFinalCount})`);
+  console.log(`==================================================`);
+  uniqueApprovedJobs.forEach((job, idx) => {
+    const { title, company, link, location } = getJobDetails(job);
+    console.log(`  ${idx + 1}. Title:    ${title}`);
+    console.log(`     Company:  ${company} [${location}]`);
+    console.log(`     Link:     ${link}`);
+    if (idx < totalFinalCount - 1) console.log('');
+  });
+  console.log(`==================================================\n`);
 
   // Sort by location so jobs from the same city land in the same batch where possible.
   // This makes location sub-headers in each email coherent.
