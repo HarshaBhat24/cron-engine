@@ -103,8 +103,10 @@ async function main() {
 
     console.log(`  => [Summary for ${search.location}] ${rawJobs.length} raw jobs evaluated -> ${titleFiltered.length} passed title & description filter.`);
 
-    rawJobsByLocation.push({ location: search.location, titleJobs: titleFiltered });
-    allTitleFiltered.push(...titleFiltered);
+      allTitleFiltered.push(...titleFiltered);
+    } catch (err) {
+      console.error(`  [Location Error] Failed to fetch or process location "${search.location}": ${err.message}`);
+    }
   }
 
   // Step 3: Deduplicate candidate listings across locations
