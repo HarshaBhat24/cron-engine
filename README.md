@@ -43,7 +43,7 @@ The summary (last) email additionally shows a metrics card at the top:
 |---------|-------------|---------------|--------------|
 | total raw results | after title filter | after company filter | after LLM screen |
 
-To change the number of jobs per email, configure `MAIL_BATCH_SIZE` in `.env` (default: `3`).
+By default, all jobs are delivered in a single daily digest email (`MAIL_BATCH_SIZE=0`). To split jobs into smaller batches (e.g. 3 jobs per email), configure `MAIL_BATCH_SIZE` in `.env` or GitHub Actions variables.
 To receive a daily heartbeat email even when 0 jobs match, set `SEND_EMPTY_DIGEST=true` in `.env`.
 
 ## LLM Experience Screening & Fallback Chain

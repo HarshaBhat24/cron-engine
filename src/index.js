@@ -250,26 +250,30 @@ async function main() {
   // Sort by location so jobs from the same city land in the same batch where possible.
   uniqueApprovedJobs.sort((a, b) => (a._location || '').localeCompare(b._location || ''));
 
-  // Step 7: Send batched HTML digest emails
+  // Step 7: Send HTML digest email(s)
   const dateStr      = new Date().toISOString().slice(0, 10);
-  const totalBatches = Math.ceil(uniqueApprovedJobs.length / MAIL_BATCH_SIZE);
+  const isBatched    = MAIL_BATCH_SIZE > 1;
+  const batchSize    = isBatched ? MAIL_BATCH_SIZE : uniqueApprovedJobs.length;
+  const totalBatches = Math.max(1, Math.ceil(uniqueApprovedJobs.length / batchSize));
 
-  console.log(`\n--- Sending ${totalBatches} email(s) (${MAIL_BATCH_SIZE} jobs/mail, last mail = summary) ---`);
+  console.log(`\n--- Sending ${totalBatches} email(s) (${isBatched ? `${batchSize} jobs/mail` : 'all jobs in 1 email'}, last mail = summary) ---`);
 
   let sentCount    = 0;
   let firstThreadId = null; // Captured from batch 1; passed to batches 2+ for Gmail threading
 
   for (let i = 0; i < totalBatches; i++) {
     const batchNum    = i + 1;
-    const batchJobs   = uniqueApprovedJobs.slice(i * MAIL_BATCH_SIZE, (i + 1) * MAIL_BATCH_SIZE);
+    const batchJobs   = uniqueApprovedJobs.slice(i * batchSize, (i + 1) * batchSize);
     const isLastBatch = batchNum === totalBatches;
 
     const cities = SEARCHES.map((s) => s.location.split(',')[0].trim());
     const locationLabel = cities.length <= 3 ? cities.join(' & ') : `${cities.slice(0, 2).join(' & ')} +${cities.length - 2} more`;
 
-    const subject = isLastBatch
-      ? `Cybersecurity Jobs (0-2 yrs) - ${locationLabel} - ${dateStr} [${batchNum}/${totalBatches} - Summary]`
-      : `Cybersecurity Jobs (0-2 yrs) - ${locationLabel} - ${dateStr} [${batchNum}/${totalBatches}]`;
+    const subject = totalBatches === 1
+      ? `Cybersecurity Jobs (0-2 yrs) - ${locationLabel} - ${dateStr}`
+      : (isLastBatch
+          ? `Cybersecurity Jobs (0-2 yrs) - ${locationLabel} - ${dateStr} [${batchNum}/${totalBatches} - Summary]`
+          : `Cybersecurity Jobs (0-2 yrs) - ${locationLabel} - ${dateStr} [${batchNum}/${totalBatches}]`);
 
     const html = isLastBatch
       ? buildSummaryEmailHtml(batchJobs, batchNum, totalBatches, {

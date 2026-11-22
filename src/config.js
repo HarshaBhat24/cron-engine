@@ -71,12 +71,41 @@ const SENIORITY_EXCLUDE = [
 // ---------- COMPANY FILTER ----------
 
 const DEFAULT_COMPANY_EXCLUDE = [
-  'Infosys', 'Wipro', 'Capgemini', 'TCS', 'Tata Consultancy Services', 'IBM',
+  'Infosys', 'Wipro', 'Capgemini', 'TCS', 'Tata Consultancy Services', 'IBM', 'Flexiple',
 ];
 
-const COMPANY_EXCLUDE = process.env.COMPANY_EXCLUDE
-  ? process.env.COMPANY_EXCLUDE.split(',').map((s) => s.trim()).filter(Boolean)
-  : DEFAULT_COMPANY_EXCLUDE;
+/**
+ * Parses and sanitizes company exclusion strings from environment variables.
+ * Handles comma/semicolon/newline separation, single/double quotes, and JSON array notation.
+ */
+function parseCompanyExclude(raw, defaultList = DEFAULT_COMPANY_EXCLUDE) {
+  if (!raw || typeof raw !== 'string') return defaultList;
+
+  let cleaned = raw.trim().replace(/^['"]+|['"]+$/g, '').trim();
+
+  if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) {
+        const list = parsed
+          .map((s) => String(s || '').trim().replace(/^['"`]+|['"`]+$/g, '').trim())
+          .filter(Boolean);
+        if (list.length > 0) return list;
+      }
+    } catch {
+      cleaned = cleaned.slice(1, -1);
+    }
+  }
+
+  const list = cleaned
+    .split(/[,;\n]/)
+    .map((s) => s.trim().replace(/^['"`]+|['"`]+$/g, '').trim())
+    .filter(Boolean);
+
+  return list.length > 0 ? list : defaultList;
+}
+
+const COMPANY_EXCLUDE = parseCompanyExclude(process.env.COMPANY_EXCLUDE, DEFAULT_COMPANY_EXCLUDE);
 
 // ---------- DESCRIPTION YEARS FILTER ----------
 
@@ -98,7 +127,19 @@ const JD_SYSTEM_PROMPT = `You are a technical job screener evaluating job descri
 
 // ---------- EMAIL & DELIVERY CONFIG ----------
 
-const MAIL_BATCH_SIZE = parseInt(process.env.MAIL_BATCH_SIZE, 10) || 3;
+/**
+ * Parses MAIL_BATCH_SIZE.
+ * Defaults to 0 (all matching jobs sent in 1 single email per day).
+ * Set to a number > 1 (e.g. 3) to enable chunked batch emails.
+ */
+function parseMailBatchSize(val) {
+  if (val === undefined || val === null || val === '') return 0;
+  const num = parseInt(val, 10);
+  if (isNaN(num) || num <= 1) return 0;
+  return num;
+}
+
+const MAIL_BATCH_SIZE = parseMailBatchSize(process.env.MAIL_BATCH_SIZE);
 const SEND_EMPTY_DIGEST = process.env.SEND_EMPTY_DIGEST === 'true';
 
 module.exports = {
@@ -114,7 +155,9 @@ module.exports = {
   SEARCHES,
   SECURITY_KEYWORDS,
   SENIORITY_EXCLUDE,
+  DEFAULT_COMPANY_EXCLUDE,
   COMPANY_EXCLUDE,
+  parseCompanyExclude,
   CHECK_DESCRIPTION_YEARS,
   MAX_YEARS,
   GROQ_MODELS,
@@ -122,6 +165,7 @@ module.exports = {
   LLM_BATCH_SIZE,
   JD_SYSTEM_PROMPT,
   MAIL_BATCH_SIZE,
+  parseMailBatchSize,
   SEND_EMPTY_DIGEST,
 };
 
