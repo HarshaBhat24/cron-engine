@@ -216,11 +216,11 @@ function buildSummaryEmailHtml(jobs, batchNum, totalBatches, stats = {}) {
   const header = `
     ${isLastToken ? buildLastTokenWarning(tokenLabel) : ''}
     <div style="margin-bottom:20px;text-align:center;">
-      <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;">⚡ Cybersecurity Job Digest - Summary</h2>
+      <h2 style="margin:0 0 6px 0;font-size:22px;color:#0f172a;">⚡ Cybersecurity Job Digest${totalBatches > 1 ? ' - Summary' : ''}</h2>
       <p style="margin:0;color:#64748b;font-size:13px;">LinkedIn (0-2 yrs) scraped &amp; LLM verified in past 24 hours</p>
       <span style="display:inline-block;margin-top:8px;background-color:#16a34a;color:#ffffff;
                    font-size:12px;font-weight:600;padding:3px 14px;border-radius:9999px;">
-        Mail ${batchNum} of ${totalBatches} · Summary
+        ${totalBatches === 1 ? 'Daily Digest' : `Mail ${batchNum} of ${totalBatches} · Summary`}
       </span>
     </div>
 

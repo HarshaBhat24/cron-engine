@@ -120,10 +120,14 @@ describe('passesCompanyFilter', () => {
       'Tata Consultancy Services',
       'IBM',
       'IBM India',
+      'Flexiple',
+      'Flexiple.com',
+      'Flexiple Tech',
     ];
 
+    const { DEFAULT_COMPANY_EXCLUDE } = require('../src/config');
     for (const company of excluded) {
-      assert.equal(passesCompanyFilter(company), false, `Expected "${company}" to be excluded`);
+      assert.equal(passesCompanyFilter(company, DEFAULT_COMPANY_EXCLUDE), false, `Expected "${company}" to be excluded`);
     }
   });
 
@@ -152,10 +156,61 @@ describe('passesCompanyFilter', () => {
     assert.equal(passesCompanyFilter('CrowdStrike', customList), true);
   });
 
+  it('supports custom excluded company lists with wrapping quotes', () => {
+    const quotedList = ["'Infosys'", " 'Wipro'", "'Flexiple'"];
+    assert.equal(passesCompanyFilter('Infosys', quotedList), false);
+    assert.equal(passesCompanyFilter('Wipro Limited', quotedList), false);
+    assert.equal(passesCompanyFilter('Flexiple', quotedList), false);
+    assert.equal(passesCompanyFilter('CrowdStrike', quotedList), true);
+  });
+
   it('handles null, undefined, or non-string inputs safely', () => {
     assert.equal(passesCompanyFilter(null), true);
     assert.equal(passesCompanyFilter(undefined), true);
     assert.equal(passesCompanyFilter(123), true);
+  });
+});
+
+describe('Configuration Parsers', () => {
+  const { parseCompanyExclude, parseMailBatchSize } = require('../src/config');
+
+  it('parses comma-separated company strings with single quotes', () => {
+    const input = "'Infosys', 'Wipro', 'Capgemini', 'TCS', 'Tata Consultancy Services', 'IBM', 'Flexiple'";
+    const result = parseCompanyExclude(input);
+    assert.deepEqual(result, [
+      'Infosys',
+      'Wipro',
+      'Capgemini',
+      'TCS',
+      'Tata Consultancy Services',
+      'IBM',
+      'Flexiple',
+    ]);
+  });
+
+  it('parses JSON-array and double-quoted company strings', () => {
+    assert.deepEqual(
+      parseCompanyExclude("['Infosys', 'Wipro', 'Flexiple']"),
+      ['Infosys', 'Wipro', 'Flexiple']
+    );
+    assert.deepEqual(
+      parseCompanyExclude('"Infosys", "Wipro", "Flexiple"'),
+      ['Infosys', 'Wipro', 'Flexiple']
+    );
+    assert.deepEqual(
+      parseCompanyExclude('Infosys; Wipro; Flexiple'),
+      ['Infosys', 'Wipro', 'Flexiple']
+    );
+  });
+
+  it('parses MAIL_BATCH_SIZE defaulting to 0 (single daily email)', () => {
+    assert.equal(parseMailBatchSize(undefined), 0);
+    assert.equal(parseMailBatchSize(''), 0);
+    assert.equal(parseMailBatchSize('0'), 0);
+    assert.equal(parseMailBatchSize('1'), 0); // 1 job/mail maps to 0 to prevent inbox spam
+    assert.equal(parseMailBatchSize('all'), 0);
+    assert.equal(parseMailBatchSize('3'), 3);
+    assert.equal(parseMailBatchSize(5), 5);
   });
 });
 

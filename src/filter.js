@@ -25,9 +25,18 @@ const EXCLUDE_REGEX = new RegExp(
   'i'
 );
 
+// Sanitizes company names by removing wrapping quotes and whitespace
+function sanitizeCompanyList(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((s) => String(s || '').trim().replace(/^['"`]+|['"`]+$/g, '').trim())
+    .filter(Boolean);
+}
+
 // Helper to expand company exclude list (e.g. TCS -> Tata Consultancy Services)
 function expandCompanyList(list) {
-  const expanded = [...(list || [])];
+  const sanitized = sanitizeCompanyList(list);
+  const expanded = [...sanitized];
   if (
     expanded.some((c) => c.toLowerCase() === 'tcs') &&
     !expanded.some((c) => c.toLowerCase() === 'tata consultancy services')
@@ -132,7 +141,7 @@ function passesCompanyFilter(companyName, excludedCompanies = COMPANY_EXCLUDE) {
 
   if (!regex) return true;
 
-  const normalized = companyName.replace(/\./g, '').replace(/[-_]/g, ' ').trim();
+  const normalized = companyName.replace(/[-_.]/g, ' ').replace(/\s+/g, ' ').trim();
   return !regex.test(normalized);
 }
 
@@ -251,4 +260,6 @@ module.exports = {
   filterJobs,
   deduplicateJobs,
   evaluateJob,
+  sanitizeCompanyList,
+  expandCompanyList,
 };
